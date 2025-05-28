@@ -1,0 +1,133 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  phone     String?
+  password  String
+  name      String?
+  sobrenome String?
+  biografia String?
+  foto      String?
+  isAdmin   Boolean  @default(false)
+  saldo     Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  roleId    String?
+  walletId  String?
+  profileImg String?
+  imgGenerationsCount Int? @default(0)
+  textGenerationsCount Int? @default(0)
+
+
+  doacoes  Doacao[]
+  campanhas Campanha[]
+  saques   Saques[]
+  comments Comments[]
+  wallet    Wallet?  @relation(fields: [walletId], references: [id])
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  balance   Float    @default(0)
+  userId    String
+
+  user User[]
+}
+
+model Campanha {
+  id          String   @id @default(cuid())
+  nome        String
+  descricao   String
+  imagem      String   @default("https://i.imgur.com/8v7x2Qe.png")
+  descricaoCompleta String
+  dataInicio  DateTime
+  dataFim     DateTime
+  valorMeta   Float
+  valorArrecadado Float
+  status      String @default("pendente")
+  organizadorId String
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  doacoes     Doacao[]
+  organizador Organizador @relation(fields: [organizadorId], references: [id])
+  comments    Comments[]
+  
+}
+
+model Doacao {
+  id              String   @id @default(cuid())
+  valor           Float
+  data            DateTime @default(now())
+  campanhaId      String
+  nomeDoador      String?
+  userId          String?
+  displayName     String?
+  taxaPlataforma  Float
+  metodoPagamento String
+  status          String @default("pendente")
+  cripto          Float    @default(0)
+  moeda           String?  @default("BRL")
+
+  campanha        Campanha @relation(fields: [campanhaId], references: [id])
+  user            User?     @relation(fields: [userId], references: [id])
+}
+
+model Organizador {
+  id          String   @id @default(cuid())
+  tipodeOrganizador String
+  nome        String
+  email       String
+  telefone    String
+  doc         String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  campanhas Campanha[]
+}
+
+model Saques {
+  id        String   @id @default(cuid())
+  nomeCompleto String
+  valor     Float
+  chavePIX String
+  status    String @default("pendente")
+  data      DateTime @default(now())
+  userId    String
+
+  user     User     @relation(fields: [userId], references: [id])
+}
+
+model Comments {
+  id        String   @id @default(cuid())
+  text      String
+  comment   String?
+  userId    String?
+  data      DateTime @default(now())
+  campanhaId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  displayName     String? 
+
+  user     User?     @relation(fields: [userId], references: [id])
+  campanha Campanha @relation(fields: [campanhaId], references: [id])
+
+}
