@@ -58,43 +58,6 @@ model User {
 
   // Instructor specific fields
   bio           String?
-  
-  // Campos específicos do instrutor
-  isActive              Boolean?        @default(true)    // Instrutor ativo?
-  corporateName         String?                           // Razão social (para pessoa jurídica)
-  
-  // Tipo de pessoa
-  personType            String?         @default("FISICA") // FISICA ou JURIDICA
-  
-  // Documentos
-  cpf                   String?         @unique           // CPF (para pessoa física)
-  cnpj                  String?         @unique           // CNPJ (para pessoa jurídica)
-  municipalRegistration String?                           // Inscrição municipal
-  stateRegistration     String?                           // Inscrição estadual
-  
-  // Endereço
-  zipCode               String?                           // CEP
-  address               String?                           // Endereço
-  addressNumber         String?                           // Número
-  neighborhood          String?                           // Bairro
-  city                  String?                           // Cidade
-  state                 String?                           // Estado
-  
-  // Contatos
-  landlineAreaCode      String?                           // DDD telefone fixo
-  landlineNumber        String?                           // Telefone fixo
-  mobileAreaCode        String?                           // DDD celular
-  mobileNumber          String?                           // Celular
-  
-  // Informações profissionais
-  education             String?                           // Escolaridade
-  registrationNumber    String?                           // Número do registro profissional
-  
-  // Relacionamento com treinamentos
-  trainings             Training[]      @relation("InstructorTrainings")
-  
-  // Informações adicionais
-  observations          String?         @db.Text          // Observações
 
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -103,8 +66,57 @@ model User {
   sessions          Session[]
   skills            Skill[]             @relation("UserSkills")
   
-  // Classes relationships (for instructors only)
-  instructorClasses Class[]             @relation("ClassInstructor")
+  // Relacionamento com instrutor
+  instructor        Instructor?
+}
+
+model Instructor {
+  id                    String    @id @default(cuid())
+  userId                String?   @unique
+  user                  User?     @relation(fields: [userId], references: [id])
+  
+  // Informações básicas
+  isActive              Boolean   @default(true)
+  name                  String
+  corporateName         String?   // Razão social (para pessoa jurídica)
+  
+  // Tipo de pessoa
+  personType            String    @default("FISICA") // FISICA ou JURIDICA
+  
+  // Documentos
+  cpf                   String?   @unique           // CPF (para pessoa física)
+  cnpj                  String?   @unique           // CNPJ (para pessoa jurídica)
+  municipalRegistration String?                     // Inscrição municipal
+  stateRegistration     String?                     // Inscrição estadual
+  
+  // Endereço
+  zipCode               String?                     // CEP
+  address               String?                     // Endereço
+  addressNumber         String?                     // Número
+  neighborhood          String?                     // Bairro
+  city                  String?                     // Cidade
+  state                 String?                     // Estado
+  
+  // Contatos
+  landlineAreaCode      String?                     // DDD telefone fixo
+  landlineNumber        String?                     // Telefone fixo
+  mobileAreaCode        String?                     // DDD celular
+  mobileNumber          String?                     // Celular
+  email                 String?   @unique           // Email
+  
+  // Informações profissionais
+  education             String?                     // Escolaridade
+  registrationNumber    String?                     // Número do registro profissional
+  
+  // Informações adicionais
+  observations          String?   @db.Text          // Observações
+  
+  // Relacionamentos
+  trainings             Training[] @relation("InstructorTrainings")
+  classes               Class[]    @relation("ClassInstructor")
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   
   // Índices para otimização de consultas
   @@index([cpf])
@@ -267,7 +279,7 @@ model Training {
   // Relacionamentos
   classes       Class[]
   certificates  Certificate[]
-  instructors   User[]   @relation("InstructorTrainings")
+  instructors   Instructor[]   @relation("InstructorTrainings")
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -278,7 +290,7 @@ model Class {
   trainingId   String
   training     Training @relation(fields: [trainingId], references: [id])
   instructorId String
-  instructor   User     @relation("ClassInstructor", fields: [instructorId], references: [id])
+  instructor   Instructor @relation("ClassInstructor", fields: [instructorId], references: [id])
   roomId       String
   room         Room     @relation(fields: [roomId], references: [id])
   startDate    DateTime

@@ -74,13 +74,6 @@ export class SuperadminController {
     return this.superadminService.deleteUser(id);
   }
 
-  // Alternar status ativo/inativo do usuário
-  @Patch('users/:id/toggle-status')
-  @RequirePermissions('EDIT_USERS')
-  async toggleUserStatus(@Param('id') id: string) {
-    return this.superadminService.toggleUserStatus(id);
-  }
-
   // Listar todos os roles disponíveis
   @Get('roles')
   @RequirePermissions('VIEW_ROLES')
@@ -88,70 +81,5 @@ export class SuperadminController {
     return this.superadminService.findAllRoles();
   }
 
-  // Buscar role por ID
-  @Get('roles/:id')
-  @RequirePermissions('VIEW_ROLES')
-  async findRoleById(@Param('id') id: string) {
-    return this.superadminService.findRoleById(id);
-  }
-
-  // Criar novo role
-  @Post('roles')
-  @RequirePermissions('CREATE_ROLES')
-  @HttpCode(HttpStatus.CREATED)
-  @UsePipes(new ValidationPipe({ transform: true }))
-  async createRole(@Body() createRoleDto: CreateRoleDto) {
-    return this.superadminService.createRole(
-      createRoleDto.name,
-      createRoleDto.description,
-      createRoleDto.permissionIds
-    );
-  }
-
-  // Atualizar role existente
-  @Put('roles/:id')
-  @RequirePermissions('EDIT_ROLES')
-  @UsePipes(new ValidationPipe({ transform: true }))
-  async updateRole(
-    @Param('id') id: string,
-    @Body() updateRoleDto: UpdateRoleDto,
-  ) {
-    return this.superadminService.updateRole(
-      id,
-      updateRoleDto.name,
-      updateRoleDto.description,
-      updateRoleDto.permissionIds
-    );
-  }
-
-  // Atualizar role parcialmente (PATCH)
-  @Patch('roles/:id')
-  @RequirePermissions('EDIT_ROLES')
-  @UsePipes(new ValidationPipe({ transform: true }))
-  async patchRole(
-    @Param('id') id: string,
-    @Body() updateRoleDto: UpdateRoleDto,
-  ) {
-    return this.superadminService.patchRole(
-      id,
-      updateRoleDto.name,
-      updateRoleDto.description,
-      updateRoleDto.permissionIds
-    );
-  }
-
-  // Deletar role
-  @Delete('roles/:id')
-  @RequirePermissions('DELETE_ROLES')
-  @HttpCode(HttpStatus.OK)
-  async deleteRole(@Param('id') id: string) {
-    return this.superadminService.deleteRole(id);
-  }
-
-  // Listar todas as permissões disponíveis
-  @Get('permissions')
-  @RequirePermissions('VIEW_ROLES')
-  async findAllPermissions() {
-    return this.superadminService.findAllPermissions();
-  }
+ 
 }

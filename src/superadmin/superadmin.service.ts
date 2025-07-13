@@ -17,8 +17,6 @@ export class SuperadminService {
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
             { email: { contains: search, mode: 'insensitive' } },
-            { cpf: { contains: search, mode: 'insensitive' } },
-            { cnpj: { contains: search, mode: 'insensitive' } },
           ],
         }
       : {};
@@ -96,26 +94,6 @@ export class SuperadminService {
       throw new BadRequestException('Email já está em uso');
     }
 
-    // Verificar se CPF já existe (se fornecido)
-    if (userData.cpf) {
-      const existingCpf = await this.prisma.user.findFirst({
-        where: { cpf: userData.cpf },
-      });
-      if (existingCpf) {
-        throw new BadRequestException('CPF já está em uso');
-      }
-    }
-
-    // Verificar se CNPJ já existe (se fornecido)
-    if (userData.cnpj) {
-      const existingCnpj = await this.prisma.user.findFirst({
-        where: { cnpj: userData.cnpj },
-      });
-      if (existingCnpj) {
-        throw new BadRequestException('CNPJ já está em uso');
-      }
-    }
-
     // Verificar se o role existe
     const role = await this.prisma.role.findUnique({
       where: { id: roleId },
@@ -128,13 +106,14 @@ export class SuperadminService {
     // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Criar o usuário
+    // Criar o usuário (apenas campos básicos agora)
     const user = await this.prisma.user.create({
       data: {
         email,
         password: hashedPassword,
         roleId,
-        ...userData,
+        name: userData.name,
+        bio: userData.bio,
       },
       include: {
         role: {
@@ -162,8 +141,6 @@ export class SuperadminService {
       select: {
         id: true,
         email: true,
-        cpf: true,
-        cnpj: true,
       },
     });
 
@@ -181,26 +158,6 @@ export class SuperadminService {
       }
     }
 
-    // Verificar se CPF já existe (se está sendo alterado)
-    if (userData.cpf && userData.cpf !== existingUser.cpf) {
-      const cpfExists = await this.prisma.user.findFirst({
-        where: { cpf: userData.cpf },
-      });
-      if (cpfExists) {
-        throw new BadRequestException('CPF já está em uso');
-      }
-    }
-
-    // Verificar se CNPJ já existe (se está sendo alterado)
-    if (userData.cnpj && userData.cnpj !== existingUser.cnpj) {
-      const cnpjExists = await this.prisma.user.findFirst({
-        where: { cnpj: userData.cnpj },
-      });
-      if (cnpjExists) {
-        throw new BadRequestException('CNPJ já está em uso');
-      }
-    }
-
     // Verificar se o role existe (se está sendo alterado)
     if (roleId) {
       const role = await this.prisma.role.findUnique({
@@ -211,9 +168,11 @@ export class SuperadminService {
       }
     }
 
-    // Preparar dados para atualização
-    const updateData: any = { ...userData };
+    // Preparar dados para atualização (apenas campos básicos)
+    const updateData: any = {};
     
+    if (userData.name) updateData.name = userData.name;
+    if (userData.bio) updateData.bio = userData.bio;
     if (email) updateData.email = email;
     if (roleId) updateData.roleId = roleId;
     
@@ -257,13 +216,17 @@ export class SuperadminService {
     const userWithRelations = await this.prisma.user.findUnique({
       where: { id },
       include: {
-        instructorClasses: true,
         accounts: true,
         sessions: true,
+        instructor: {
+          include: {
+            classes: true,
+          },
+        },
       },
     });
 
-    if (userWithRelations && userWithRelations.instructorClasses && userWithRelations.instructorClasses.length > 0) {
+    if (userWithRelations && userWithRelations.instructor && userWithRelations.instructor.classes && userWithRelations.instructor.classes.length > 0) {
       throw new BadRequestException(
         'Não é possível excluir usuário que possui turmas associadas'
       );
@@ -277,7 +240,7 @@ export class SuperadminService {
       );
     }
 
-    // Deletar o usuário
+    // Deletar o usuário (isso também deletará o instrutor associado se existir devido ao onDelete: CASCADE)
     await this.prisma.user.delete({
       where: { id },
     });
@@ -308,32 +271,7 @@ export class SuperadminService {
 
   // Alternar status ativo/inativo do usuário
   async toggleUserStatus(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
-    });
-
-    if (!user) {
-      throw new NotFoundException('Usuário não encontrado');
-    }
-
-    const updatedUser = await this.prisma.user.update({
-      where: { id },
-      data: {
-        isActive: !user.isActive,
-      },
-      include: {
-        role: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-          },
-        },
-      },
-    });
-
-    // Remove password from response
-    const { password, ...sanitizedUser } = updatedUser;
-    return sanitizedUser;
+    // Como o campo isActive foi removido da tabela User, esta funcionalidade não está disponível
+    throw new BadRequestException('Funcionalidade de ativar/desativar usuário não está disponível');
   }
 }

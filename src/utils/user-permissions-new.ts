@@ -52,10 +52,14 @@ async function getInstructorsWithSkills() {
     include: {
       role: true,
       skills: true,
-      instructorClasses: {
+      instructor: {
         include: {
-          training: true,
-          students: true,
+          classes: {
+            include: {
+              training: true,
+              students: true,
+            },
+          },
         },
       },
     },
