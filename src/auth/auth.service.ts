@@ -19,6 +19,10 @@ export class AuthService {
             throw new UnauthorizedException('Usuário não encontrado');
         }
 
+        if (!user.password) {
+            throw new UnauthorizedException('Usuário sem senha definida');
+        }
+
         const validPassword = await bcrypt.compare(data.password, user.password);
         if (!validPassword) {
             throw new UnauthorizedException('Credenciais inválidas');
@@ -26,7 +30,6 @@ export class AuthService {
 
         const accessToken = await this.jwtService.signAsync({
             id: user.id,
-            isAdmin: user.isAdmin,
             roleId: user.roleId,
         });
 
@@ -63,7 +66,7 @@ export class AuthService {
 
         const accessToken = await this.jwtService.signAsync({
             id: user.id,
-            isAdmin: user.isAdmin,
+
             roleId: user.roleId,
         });
 
@@ -75,6 +78,54 @@ export class AuthService {
                 roleId: user.roleId,
             },
             accessToken,
+        };
+    }
+
+    async getUserPermissions(userId: string) {
+        const user = await this.prismaService.user.findUnique({
+            where: {
+                id: userId,
+            },
+            include: {
+                role: {
+                    include: {
+                        permissions: {
+                            include: {
+                                permission: true,
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        if (!user) {
+            throw new UnauthorizedException('Usuário não encontrado');
+        }
+
+        if (!user.role) {
+            throw new UnauthorizedException('Usuário não possui role definida');
+        }
+
+        // Extrair as permissões do usuário
+        const permissions = user.role.permissions.map(rolePermission => ({
+            id: rolePermission.permission.id,
+            name: rolePermission.permission.name,
+            description: rolePermission.permission.description,
+        }));
+
+        return {
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: {
+                    id: user.role.id,
+                    name: user.role.name,
+                    description: user.role.description,
+                },
+            },
+            permissions,
         };
     }
 
@@ -103,10 +154,9 @@ export class AuthService {
     
         const newAccessToken = await this.jwtService.signAsync({
             id: updatedUser.id,
-            isAdmin: updatedUser.isAdmin,
             roleId: roleId,
         });
-    
+
         return {
             user: {
                 id: updatedUser.id,

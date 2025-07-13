@@ -29,4 +29,11 @@ export class AuthController {
     async me() {
         return 'logado';
     }
+
+    @UseGuards(AuthGuard)
+    @Get('permissions')
+    async getUserPermissions(@Request() req) {
+        const userId = req.user.id; // Extraído do JWT pelo AuthGuard
+        return this.authService.getUserPermissions(userId);
+    }
 }

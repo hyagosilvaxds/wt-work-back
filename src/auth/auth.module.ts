@@ -13,6 +13,7 @@ import { JwtModule } from '@nestjs/jwt';
     signOptions: { expiresIn: '7d' },
   })],
   controllers: [AuthController],
-  providers: [AuthService, PrismaService]
+  providers: [AuthService, PrismaService],
+  exports: [AuthService], // Exportando AuthService para outros módulos
 })
 export class AuthModule {}

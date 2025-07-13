@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,121 +7,351 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// AUTHENTICATION MODELS (NextAuth.js)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// APPLICATION MODELS
 model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?
+  image         String?
+
+  // Role relationship
+  roleId        String
+  role          Role      @relation(fields: [roleId], references: [id])
+
+  // Instructor specific fields
+  bio           String?
+  
+  // Campos específicos do instrutor
+  isActive              Boolean?        @default(true)    // Instrutor ativo?
+  corporateName         String?                           // Razão social (para pessoa jurídica)
+  
+  // Tipo de pessoa
+  personType            String?         @default("FISICA") // FISICA ou JURIDICA
+  
+  // Documentos
+  cpf                   String?         @unique           // CPF (para pessoa física)
+  cnpj                  String?         @unique           // CNPJ (para pessoa jurídica)
+  municipalRegistration String?                           // Inscrição municipal
+  stateRegistration     String?                           // Inscrição estadual
+  
+  // Endereço
+  zipCode               String?                           // CEP
+  address               String?                           // Endereço
+  addressNumber         String?                           // Número
+  neighborhood          String?                           // Bairro
+  city                  String?                           // Cidade
+  state                 String?                           // Estado
+  
+  // Contatos
+  landlineAreaCode      String?                           // DDD telefone fixo
+  landlineNumber        String?                           // Telefone fixo
+  mobileAreaCode        String?                           // DDD celular
+  mobileNumber          String?                           // Celular
+  
+  // Informações profissionais
+  education             String?                           // Escolaridade
+  registrationNumber    String?                           // Número do registro profissional
+  
+  // Relacionamento com treinamentos
+  trainings             Training[]      @relation("InstructorTrainings")
+  
+  // Informações adicionais
+  observations          String?         @db.Text          // Observações
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts          Account[]
+  sessions          Session[]
+  skills            Skill[]             @relation("UserSkills")
+  
+  // Classes relationships (for instructors only)
+  instructorClasses Class[]             @relation("ClassInstructor")
+  
+  // Índices para otimização de consultas
+  @@index([cpf])
+  @@index([cnpj])
+  @@index([email])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+
+  @@unique([roleId, permissionId])
+}
+
+model Skill {
+  id    String @id @default(cuid())
+  name  String @unique
+  users User[] @relation("UserSkills")
+}
+
+model Student {
+  id                String    @id @default(cuid())
+  
+  // Informações básicas
+  isActive          Boolean   @default(true)        // Aluno ativo?
+  name              String                          // Nome do aluno
+  cpf               String    @unique               // CPF do aluno
+  rg                String?                         // RG do aluno
+  gender            String?                         // Sexo (MASCULINO, FEMININO, OUTRO)
+  birthDate         DateTime?                       // Data de nascimento
+  education         String?                         // Escolaridade
+  
+  // Endereço do aluno
+  zipCode           String?                         // CEP
+  address           String?                         // Endereço
+  addressNumber     String?                         // Número
+  neighborhood      String?                         // Bairro
+  city              String?                         // Cidade
+  state             String?                         // Estado
+  
+  // Contatos do aluno
+  landlineAreaCode  String?                         // DDD telefone fixo
+  landlineNumber    String?                         // Telefone fixo
+  mobileAreaCode    String?                         // DDD celular
+  mobileNumber      String?                         // Celular
+  email             String?   @unique               // Email do aluno
+  
+  // Informações adicionais
+  observations      String?   @db.Text              // Observações
+  
+  // Relacionamento com cliente
+  clientId          String?
+  client            Client?   @relation(fields: [clientId], references: [id])
+  
+  // Timestamps
+  enrollmentDate    DateTime  @default(now())       // Data de matrícula
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relacionamentos
+  classes           Class[]             @relation("ClassStudents")
+  certificates      Certificate[]
+  accountsReceivable AccountReceivable[]
+  
+  // Índices para otimização de consultas
+  @@index([cpf])
+  @@index([email])
+  @@index([clientId])
+}
+
+model Client {
+  id                    String    @id @default(cuid())
+  // Informações básicas
+  isActive              Boolean   @default(true)
+  name                  String    // Nome ou Razão Social
+  corporateName         String?   // Razão social (para pessoa jurídica)
+  
+  // Tipo de pessoa
+  personType            String    @default("FISICA") // FISICA ou JURIDICA
+  
+  // Documentos
+  cpf                   String?   @unique // Para pessoa física
+  cnpj                  String?   @unique // Para pessoa jurídica
+  municipalRegistration String?   // Inscrição municipal
+  stateRegistration     String?   // Inscrição estadual
+  
+  // Endereço
+  zipCode               String?   // CEP
+  address               String?   // Endereço
+  number                String?   // Número
+  neighborhood          String?   // Bairro
+  city                  String?   // Cidade
+  state                 String?   // Estado
+  
+  // Contatos
+  landlineAreaCode      String?   // DDD telefone fixo
+  landlineNumber        String?   // Telefone fixo
+  mobileAreaCode        String?   // DDD celular
+  mobileNumber          String?   // Celular
+  email                 String?   @unique
+  
+  // Informações adicionais
+  observations          String?   @db.Text
+  
+  // Dados de acesso ao sistema
+  responsibleName       String?   // Nome do responsável
+  responsibleEmail      String?   // Email do responsável
+  responsiblePhone      String?   // Telefone do responsável
+  systemUsername        String?   @unique // Usuário
+  systemPassword        String?   // Senha (criptografada)
+  
+  // Relacionamentos
+  students              Student[]
+  classes               Class[]
+  
+  // Timestamps
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  // Índices para otimização de consultas
+  @@index([cpf])
+  @@index([cnpj])
+  @@index([email])
+  @@index([systemUsername])
+}
+
+model Training {
+  id            String   @id @default(cuid())
+  title         String
+  description   String?  @db.Text
+  durationHours Int
+  
+  // Campos específicos do treinamento
+  isActive      Boolean  @default(true)        // Treinamento ativo?
+  validityDays  Int?                           // Validade em dias
+  
+  // Relacionamentos
+  classes       Class[]
+  certificates  Certificate[]
+  instructors   User[]   @relation("InstructorTrainings")
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Class {
+  id           String   @id @default(cuid())
+  trainingId   String
+  training     Training @relation(fields: [trainingId], references: [id])
+  instructorId String
+  instructor   User     @relation("ClassInstructor", fields: [instructorId], references: [id])
+  roomId       String
+  room         Room     @relation(fields: [roomId], references: [id])
+  startDate    DateTime
+  endDate      DateTime
+  
+  // Campos específicos da turma
+  type         String   @default("CURSO")       // Tipo da turma (CURSO, TREINAMENTO, etc.)
+  recycling    String   @default("NÃO")        // Reciclagem (SIM, NÃO)
+  status       String   @default("EM_ABERTO")  // Status da turma (EM_ABERTO, EM_ANDAMENTO, FINALIZADA, CANCELADA)
+  location     String?                         // Local da turma
+  
+  // Relacionamento com cliente
+  clientId     String?
+  client       Client?  @relation(fields: [clientId], references: [id])
+  
+  // Informações adicionais
+  observations String?  @db.Text               // Observações
+  
+  students     Student[]   @relation("ClassStudents")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([clientId])
+}
+
+model Room {
   id        String   @id @default(cuid())
-  email     String   @unique
-  phone     String?
-  password  String
-  name      String?
-  sobrenome String?
-  biografia String?
-  foto      String?
-  isAdmin   Boolean  @default(false)
-  saldo     Float    @default(0)
+  name      String
+  capacity  Int
+  classes   Class[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  roleId    String?
-  walletId  String?
-  profileImg String?
-  imgGenerationsCount Int? @default(0)
-  textGenerationsCount Int? @default(0)
-
-
-  doacoes  Doacao[]
-  campanhas Campanha[]
-  saques   Saques[]
-  comments Comments[]
-  wallet    Wallet?  @relation(fields: [walletId], references: [id])
 }
 
-model Wallet {
-  id        String   @id @default(cuid())
-  balance   Float    @default(0)
-  userId    String
-
-  user User[]
+model Certificate {
+  id             String   @id @default(cuid())
+  studentId      String
+  student        Student  @relation(fields: [studentId], references: [id])
+  trainingId     String
+  training       Training @relation(fields: [trainingId], references: [id])
+  issueDate      DateTime @default(now())
+  validationCode String   @unique
 }
 
-model Campanha {
-  id          String   @id @default(cuid())
-  nome        String
-  descricao   String
-  imagem      String   @default("https://i.imgur.com/8v7x2Qe.png")
-  descricaoCompleta String
-  dataInicio  DateTime
-  dataFim     DateTime
-  valorMeta   Float
-  valorArrecadado Float
-  status      String @default("pendente")
-  organizadorId String
-  
+// FINANCIAL MODELS
+model AccountReceivable {
+  id          String        @id @default(cuid())
+  description String
+  amount      Float
+  dueDate     DateTime
+  status      String @default("PENDING") // PENDING, PAID, OVERDUE, CANCELED
+  studentId   String?
+  student     Student?      @relation(fields: [studentId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model AccountPayable {
+  id          String        @id @default(cuid())
+  description String
+  amount      Float
+  dueDate     DateTime
+  status      String @default("PENDING") // PENDING, PAID, OVERDUE, CANCELED
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
-  userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  doacoes     Doacao[]
-  organizador Organizador @relation(fields: [organizadorId], references: [id])
-  comments    Comments[]
-  
 }
 
-model Doacao {
-  id              String   @id @default(cuid())
-  valor           Float
-  data            DateTime @default(now())
-  campanhaId      String
-  nomeDoador      String?
-  userId          String?
-  displayName     String?
-  taxaPlataforma  Float
-  metodoPagamento String
-  status          String @default("pendente")
-  cripto          Float    @default(0)
-  moeda           String?  @default("BRL")
-
-  campanha        Campanha @relation(fields: [campanhaId], references: [id])
-  user            User?     @relation(fields: [userId], references: [id])
-}
-
-model Organizador {
-  id          String   @id @default(cuid())
-  tipodeOrganizador String
-  nome        String
-  email       String
-  telefone    String
-  doc         String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  campanhas Campanha[]
-}
-
-model Saques {
-  id        String   @id @default(cuid())
-  nomeCompleto String
-  valor     Float
-  chavePIX String
-  status    String @default("pendente")
-  data      DateTime @default(now())
-  userId    String
-
-  user     User     @relation(fields: [userId], references: [id])
-}
-
-model Comments {
-  id        String   @id @default(cuid())
-  text      String
-  comment   String?
-  userId    String?
-  data      DateTime @default(now())
-  campanhaId String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  displayName     String? 
-
-  user     User?     @relation(fields: [userId], references: [id])
-  campanha Campanha @relation(fields: [campanhaId], references: [id])
-
+model CashFlow {
+  id          String          @id @default(cuid())
+  description String
+  amount      Float
+  type        String
+  date        DateTime        @default(now())
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 }
