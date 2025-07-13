@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { User, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { CreateUserDto, UpdateUserDto } from './dto/user.dto';
+import { CreateUserDto, UpdateUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
 
 @Injectable()
 export class SuperadminService {
@@ -114,6 +114,7 @@ export class SuperadminService {
         roleId,
         name: userData.name,
         bio: userData.bio,
+        isActive: userData.isActive ?? true,
       },
       include: {
         role: {
@@ -173,6 +174,7 @@ export class SuperadminService {
     
     if (userData.name) updateData.name = userData.name;
     if (userData.bio) updateData.bio = userData.bio;
+    if (userData.isActive !== undefined) updateData.isActive = userData.isActive;
     if (email) updateData.email = email;
     if (roleId) updateData.roleId = roleId;
     
@@ -269,9 +271,317 @@ export class SuperadminService {
     });
   }
 
+  // Buscar role por ID
+  async findRoleById(id: string) {
+    const role = await this.prisma.role.findUnique({
+      where: { id },
+      include: {
+        permissions: {
+          include: {
+            permission: true,
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!role) {
+      throw new NotFoundException('Role não encontrado');
+    }
+
+    return {
+      ...role,
+      permissions: role.permissions.map(rp => rp.permission),
+    };
+  }
+
+  // Criar novo role
+  async createRole(name: string, description?: string, permissionIds?: string[]) {
+    // Verificar se o nome já existe
+    const existingRole = await this.prisma.role.findUnique({
+      where: { name },
+    });
+
+    if (existingRole) {
+      throw new BadRequestException('Nome do role já está em uso');
+    }
+
+    // Verificar se as permissões existem
+    if (permissionIds && permissionIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: permissionIds } },
+      });
+
+      if (permissions.length !== permissionIds.length) {
+        throw new BadRequestException('Uma ou mais permissões não foram encontradas');
+      }
+    }
+
+    // Criar o role
+    const role = await this.prisma.role.create({
+      data: {
+        name,
+        description,
+        permissions: permissionIds ? {
+          create: permissionIds.map(permissionId => ({
+            permission: { connect: { id: permissionId } },
+          })),
+        } : undefined,
+      },
+      include: {
+        permissions: {
+          include: {
+            permission: true,
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...role,
+      permissions: role.permissions.map(rp => rp.permission),
+    };
+  }
+
+  // Atualizar role existente (PUT - substitui completamente)
+  async updateRole(id: string, name?: string, description?: string, permissionIds?: string[]) {
+    // Verificar se o role existe
+    const existingRole = await this.prisma.role.findUnique({
+      where: { id },
+    });
+
+    if (!existingRole) {
+      throw new NotFoundException('Role não encontrado');
+    }
+
+    // Verificar se o nome já existe (se está sendo alterado)
+    if (name && name !== existingRole.name) {
+      const nameExists = await this.prisma.role.findUnique({
+        where: { name },
+      });
+      if (nameExists) {
+        throw new BadRequestException('Nome do role já está em uso');
+      }
+    }
+
+    // Verificar se as permissões existem
+    if (permissionIds && permissionIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: permissionIds } },
+      });
+
+      if (permissions.length !== permissionIds.length) {
+        throw new BadRequestException('Uma ou mais permissões não foram encontradas');
+      }
+    }
+
+    // Atualizar o role
+    const role = await this.prisma.role.update({
+      where: { id },
+      data: {
+        name: name || existingRole.name,
+        description: description || existingRole.description,
+        permissions: {
+          deleteMany: {}, // Remove todas as permissões existentes
+          create: permissionIds ? permissionIds.map(permissionId => ({
+            permission: { connect: { id: permissionId } },
+          })) : [],
+        },
+      },
+      include: {
+        permissions: {
+          include: {
+            permission: true,
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...role,
+      permissions: role.permissions.map(rp => rp.permission),
+    };
+  }
+
+  // Atualizar role parcialmente (PATCH - atualiza apenas campos fornecidos)
+  async patchRole(id: string, name?: string, description?: string, permissionIds?: string[]) {
+    // Verificar se o role existe
+    const existingRole = await this.prisma.role.findUnique({
+      where: { id },
+    });
+
+    if (!existingRole) {
+      throw new NotFoundException('Role não encontrado');
+    }
+
+    // Verificar se o nome já existe (se está sendo alterado)
+    if (name && name !== existingRole.name) {
+      const nameExists = await this.prisma.role.findUnique({
+        where: { name },
+      });
+      if (nameExists) {
+        throw new BadRequestException('Nome do role já está em uso');
+      }
+    }
+
+    // Verificar se as permissões existem (se foram fornecidas)
+    if (permissionIds && permissionIds.length > 0) {
+      const permissions = await this.prisma.permission.findMany({
+        where: { id: { in: permissionIds } },
+      });
+
+      if (permissions.length !== permissionIds.length) {
+        throw new BadRequestException('Uma ou mais permissões não foram encontradas');
+      }
+    }
+
+    // Preparar dados para atualização
+    const updateData: any = {};
+    
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+    
+    // Se permissionIds foi fornecido, atualizar as permissões
+    if (permissionIds !== undefined) {
+      updateData.permissions = {
+        deleteMany: {}, // Remove todas as permissões existentes
+        create: permissionIds.map(permissionId => ({
+          permission: { connect: { id: permissionId } },
+        })),
+      };
+    }
+
+    // Atualizar o role
+    const role = await this.prisma.role.update({
+      where: { id },
+      data: updateData,
+      include: {
+        permissions: {
+          include: {
+            permission: true,
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    return {
+      ...role,
+      permissions: role.permissions.map(rp => rp.permission),
+    };
+  }
+
+  // Deletar role
+  async deleteRole(id: string) {
+    // Verificar se o role existe
+    const existingRole = await this.prisma.role.findUnique({
+      where: { id },
+      include: {
+        users: true,
+      },
+    });
+
+    if (!existingRole) {
+      throw new NotFoundException('Role não encontrado');
+    }
+
+    // Verificar se há usuários associados ao role
+    if (existingRole.users.length > 0) {
+      throw new BadRequestException(
+        'Não é possível excluir role que possui usuários associados'
+      );
+    }
+
+    // Deletar o role (isso também deletará as permissões associadas devido ao onDelete: CASCADE)
+    await this.prisma.role.delete({
+      where: { id },
+    });
+
+    return { message: 'Role excluído com sucesso' };
+  }
+
+  // Listar todas as permissões disponíveis
+  async findAllPermissions() {
+    return this.prisma.permission.findMany({
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        roles: {
+          select: {
+            role: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
   // Alternar status ativo/inativo do usuário
   async toggleUserStatus(id: string) {
-    // Como o campo isActive foi removido da tabela User, esta funcionalidade não está disponível
-    throw new BadRequestException('Funcionalidade de ativar/desativar usuário não está disponível');
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuário não encontrado');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: {
+        isActive: !user.isActive,
+      },
+      include: {
+        role: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+          },
+        },
+      },
+    });
+
+    // Remove password from response
+    const { password, ...sanitizedUser } = updatedUser;
+    return sanitizedUser;
   }
 }
