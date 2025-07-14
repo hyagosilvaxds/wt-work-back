@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { SuperadminService } from './superadmin.service';
 import { CreateUserDto, UpdateUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
+import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instructor.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -53,6 +54,15 @@ export class SuperadminController {
   @UsePipes(new ValidationPipe({ transform: true }))
   async createUser(@Body() createUserDto: CreateUserDto) {
     return this.superadminService.createUser(createUserDto);
+  }
+
+  // Vincular usuário a instrutor existente
+  @Post('instructors/link-user')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async linkUserToInstructor(@Body() linkUserDto: LinkUserToInstructorDto) {
+    return this.superadminService.linkUserToInstructor(linkUserDto);
   }
 
   // Atualizar usuário
@@ -153,5 +163,25 @@ export class SuperadminController {
   @RequirePermissions('VIEW_ROLES')
   async findAllPermissions() {
     return this.superadminService.findAllPermissions();
+  }
+
+  // Listar todos os instrutores
+  @Get('instructors')
+  @RequirePermissions('VIEW_USERS')
+  async getInstructors(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    
+    return this.superadminService.getInstructors(pageNum, limitNum, search);
+  }
+
+  @Get('light-instructors')
+  @RequirePermissions('VIEW_USERS')
+  async getLightInstructors() {
+    return this.superadminService.getLightInstructors();
   }
 }
