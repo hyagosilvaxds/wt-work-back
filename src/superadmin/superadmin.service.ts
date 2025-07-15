@@ -29,13 +29,26 @@ export class SuperadminService {
     if (!turma) {
       throw new NotFoundException('Turma não encontrada');
     }
+    
     // Busca os estudantes
     const students = await this.prisma.student.findMany({
       where: { id: { in: dto.studentIds } },
     });
     if (students.length !== dto.studentIds.length) {
-      throw new BadRequestException('Um ou mais estudantes não encontrados');
+      const foundIds = students.map(s => s.id);
+      const missingIds = dto.studentIds.filter(id => !foundIds.includes(id));
+      throw new BadRequestException(`Estudantes não encontrados: ${missingIds.join(', ')}`);
     }
+
+    // Verifica se algum estudante já está na turma
+    const existingStudentIds = turma.students.map(s => s.id);
+    const alreadyInClass = dto.studentIds.filter(id => existingStudentIds.includes(id));
+    if (alreadyInClass.length > 0) {
+      const studentsInClass = students.filter(s => alreadyInClass.includes(s.id));
+      const names = studentsInClass.map(s => s.name).join(', ');
+      throw new BadRequestException(`Os seguintes estudantes já estão na turma: ${names}`);
+    }
+
     // Atualiza relação N:N
     await this.prisma.class.update({
       where: { id: classId },
@@ -45,7 +58,13 @@ export class SuperadminService {
         },
       },
     });
-    return { message: 'Alunos adicionados à turma com sucesso' };
+
+    const addedStudents = students.map(s => ({ id: s.id, name: s.name }));
+    return { 
+      message: 'Alunos adicionados à turma com sucesso',
+      addedStudents,
+      classId
+    };
   }
 
   /**
@@ -1554,6 +1573,32 @@ export class SuperadminService {
             { status: { contains: search, mode: 'insensitive' } },
             { location: { contains: search, mode: 'insensitive' } },
             { observations: { contains: search, mode: 'insensitive' } },
+            // Busca por treinamento
+            { training: { 
+              OR: [
+                { title: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } },
+              ]
+            }},
+            // Busca por instrutor
+            { instructor: { 
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { corporateName: { contains: search, mode: 'insensitive' } },
+                { cpf: { contains: search, mode: 'insensitive' } },
+                { cnpj: { contains: search, mode: 'insensitive' } },
+              ]
+            }},
+            // Busca por cliente
+            { client: { 
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { cpf: { contains: search, mode: 'insensitive' } },
+                { cnpj: { contains: search, mode: 'insensitive' } },
+              ]
+            }},
           ],
         }
       : {};
@@ -1591,18 +1636,21 @@ export class SuperadminService {
     if (!turma) {
       throw new NotFoundException('Turma não encontrada');
     }
+    
     // Remove strings vazias dos campos opcionais
     Object.keys(patchDto).forEach(key => {
       if (patchDto[key] === '') {
         patchDto[key] = undefined;
       }
     });
+    
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
       if (patchDto[key] !== undefined) {
         updateData[key] = patchDto[key];
       }
     }
+    
     const updated = await this.prisma.class.update({ where: { id }, data: updateData });
     return updated;
   }
