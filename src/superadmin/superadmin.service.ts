@@ -1,6 +1,4 @@
-import { LinkUserToClientDto } from './dto/client-link-user.dto';
-import { CreateClientDto, PatchClientDto } from './dto/client.dto';
-  
+ 
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { User, Prisma } from '@prisma/client';
@@ -10,17 +8,68 @@ import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instruct
 import { UploadSignatureDto, UpdateSignatureDto } from './dto/upload-signature.dto';
 import * as fs from 'fs';
 import * as path from 'path';
-
+import { LinkUserToClientDto } from './dto/client-link-user.dto';
+import { CreateClientDto, PatchClientDto } from './dto/client.dto';
 import { CreateClassDto, PatchClassDto } from './dto/class.dto';
 import { CreateLessonDto, PatchLessonDto } from './dto/lesson.dto';
 import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesson-attendance.dto';
+import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
+// ...existing imports...
 
 @Injectable()
 export class SuperadminService {
+  // ...existing code...
+
+  // Buscar todos os estudantes de uma empresa (cliente)
+  async getEmpresaStudents(clientId: string, page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    const where: any = {
+      clientId,
+    };
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { cpf: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+    const [students, total] = await Promise.all([
+      this.prisma.student.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          classes: true,
+          certificates: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.student.count({ where }),
+    ]);
+    return {
+      students,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+  // ...existing code...
   /**
    * Adiciona alunos a uma turma
    */
   async addStudentsToClass(classId: string, dto: { studentIds: string[] }) {
+    // Validar se o DTO está correto
+    if (!dto || !dto.studentIds || !Array.isArray(dto.studentIds)) {
+      throw new BadRequestException('Lista de IDs de estudantes é obrigatória e deve ser um array');
+    }
+
+    if (dto.studentIds.length === 0) {
+      throw new BadRequestException('É necessário fornecer pelo menos um ID de estudante');
+    }
+
     // Verifica se a turma existe
     const turma = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -71,6 +120,15 @@ export class SuperadminService {
    * Remove alunos de uma turma
    */
   async removeStudentsFromClass(classId: string, dto: { studentIds: string[] }) {
+    // Validar se o DTO está correto
+    if (!dto || !dto.studentIds || !Array.isArray(dto.studentIds)) {
+      throw new BadRequestException('Lista de IDs de estudantes é obrigatória e deve ser um array');
+    }
+
+    if (dto.studentIds.length === 0) {
+      throw new BadRequestException('É necessário fornecer pelo menos um ID de estudante');
+    }
+
     // Verifica se a turma existe
     const turma = await this.prisma.class.findUnique({
       where: { id: classId },
@@ -124,14 +182,14 @@ export class SuperadminService {
     }
     // Remove strings vazias dos campos opcionais
     Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
       }
     });
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
     const updated = await this.prisma.client.update({ where: { id }, data: updateData });
@@ -1264,8 +1322,8 @@ export class SuperadminService {
     // Atualizar apenas campos fornecidos
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
     const updated = await this.prisma.instructor.update({
@@ -1369,14 +1427,14 @@ export class SuperadminService {
     }
     // Remove strings vazias dos campos opcionais
     Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
       }
     });
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
     const updated = await this.prisma.training.update({ where: { id }, data: updateData });
@@ -1394,7 +1452,7 @@ export class SuperadminService {
   }
 
   // Criar novo estudante
-  async createStudent(createStudentDto: any) {
+  async createStudent(createStudentDto: CreateStudentDto) {
     // Verifica se já existe email ou cpf cadastrado
     if (createStudentDto.email) {
       const existingEmail = await this.prisma.student.findUnique({ where: { email: createStudentDto.email } });
@@ -1408,13 +1466,29 @@ export class SuperadminService {
         throw new BadRequestException('CPF já está em uso para outro estudante');
       }
     }
+    
+    // Verifica se a empresa (cliente) existe, caso o clientId seja fornecido
+    if (createStudentDto.clientId) {
+      const client = await this.prisma.client.findUnique({ where: { id: createStudentDto.clientId } });
+      if (!client) {
+        throw new BadRequestException('Empresa (cliente) não encontrada');
+      }
+    }
+    
     // Remove strings vazias dos campos opcionais
     Object.keys(createStudentDto).forEach(key => {
       if (createStudentDto[key] === '') {
         createStudentDto[key] = undefined;
       }
     });
-    const student = await this.prisma.student.create({ data: createStudentDto });
+    const student = await this.prisma.student.create({ 
+      data: createStudentDto,
+      include: {
+        client: true,
+        classes: true,
+        certificates: true,
+      }
+    });
     return student;
   }
 
@@ -1448,6 +1522,16 @@ export class SuperadminService {
             { name: { contains: search, mode: 'insensitive' } },
             { email: { contains: search, mode: 'insensitive' } },
             { cpf: { contains: search, mode: 'insensitive' } },
+            // Busca por empresa (cliente)
+            { client: {
+                OR: [
+                  { name: { contains: search, mode: 'insensitive' } },
+                  { email: { contains: search, mode: 'insensitive' } },
+                  { cpf: { contains: search, mode: 'insensitive' } },
+                  { cnpj: { contains: search, mode: 'insensitive' } },
+                ]
+              }
+            },
           ],
         }
       : {};
@@ -1475,36 +1559,59 @@ export class SuperadminService {
   }
 
   // Atualizar parcialmente estudante (PATCH)
-  async patchStudent(id: string, patchDto: any) {
+  async patchStudent(id: string, patchDto: PatchStudentDto) {
     const student = await this.prisma.student.findUnique({ where: { id } });
     if (!student) {
       throw new NotFoundException('Estudante não encontrado');
     }
+    
+    // Verifica unicidade de email se alterado
     if (patchDto.email && patchDto.email !== student.email) {
       const emailExists = await this.prisma.student.findUnique({ where: { email: patchDto.email } });
       if (emailExists) {
         throw new BadRequestException('Email já está em uso para outro estudante');
       }
     }
+    
+    // Verifica unicidade de CPF se alterado
     if (patchDto.cpf && patchDto.cpf !== student.cpf) {
       const cpfExists = await this.prisma.student.findUnique({ where: { cpf: patchDto.cpf } });
       if (cpfExists) {
         throw new BadRequestException('CPF já está em uso para outro estudante');
       }
     }
-    // Remove strings vazias dos campos opcionais
-    Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
-      }
-    });
-    const updateData: any = {};
-    for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+    
+    // Verifica se a empresa (cliente) existe, caso o clientId seja fornecido ou alterado
+    if (patchDto.clientId && patchDto.clientId !== student.clientId) {
+      const client = await this.prisma.client.findUnique({ where: { id: patchDto.clientId } });
+      if (!client) {
+        throw new BadRequestException('Empresa (cliente) não encontrada');
       }
     }
-    const updated = await this.prisma.student.update({ where: { id }, data: updateData });
+    
+    // Remove strings vazias dos campos opcionais
+    Object.keys(patchDto).forEach(key => {
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
+      }
+    });
+    
+    const updateData: any = {};
+    for (const key of Object.keys(patchDto)) {
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
+      }
+    }
+    
+    const updated = await this.prisma.student.update({ 
+      where: { id }, 
+      data: updateData,
+      include: {
+        client: true,
+        classes: true,
+        certificates: true,
+      }
+    });
     return updated;
   }
 
@@ -1639,15 +1746,15 @@ export class SuperadminService {
     
     // Remove strings vazias dos campos opcionais
     Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
       }
     });
     
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
     
@@ -1741,18 +1848,31 @@ export class SuperadminService {
     if (!lesson) {
       throw new NotFoundException('Aula não encontrada');
     }
+    
+    // Limpa strings vazias
     Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
       }
     });
+    
+    // Monta objeto de atualização apenas com campos definidos
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
-    const updated = await this.prisma.lesson.update({ where: { id }, data: updateData });
+    
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo fornecido para atualização');
+    }
+    
+    const updated = await this.prisma.lesson.update({ 
+      where: { id }, 
+      data: updateData 
+    });
+    
     return updated;
   }
 
@@ -1768,11 +1888,104 @@ export class SuperadminService {
 
   // --- LESSON ATTENDANCE CRUD ---
 
+
+  /**
+   * Buscar todas as presenças de aula de uma turma
+   */
+  async getLessonAttendanceByClassId(classId: string) {
+    // Busca todas as aulas da turma
+    const lessons = await this.prisma.lesson.findMany({
+      where: { classId },
+      select: { id: true }
+    });
+    const lessonIds = lessons.map(l => l.id);
+    if (lessonIds.length === 0) {
+      return { attendances: [], message: 'Nenhuma aula encontrada para esta turma.' };
+    }
+    // Busca todas as presenças dessas aulas
+    const attendances = await this.prisma.lessonAttendance.findMany({
+      where: { lessonId: { in: lessonIds } },
+      include: {
+        lesson: true,
+        student: true,
+      }
+    });
+    return { attendances };
+  }
+
+  /**
+   * Marcar todos os alunos de uma turma como ausentes em uma aula específica
+   */
+  async markAllStudentsAbsent(classId: string, lessonId: string) {
+    // Verifica se a turma existe
+    const turma = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: { students: true },
+    });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    // Verifica se a aula existe e pertence à turma
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+    });
+    if (!lesson) {
+      throw new NotFoundException('Aula não encontrada');
+    }
+    if (lesson.classId !== classId) {
+      throw new BadRequestException('Esta aula não pertence à turma informada');
+    }
+
+    // Verifica se há alunos na turma
+    if (turma.students.length === 0) {
+      throw new BadRequestException('Não há alunos cadastrados nesta turma');
+    }
+
+    // Busca presenças já existentes para esta aula
+    const existingAttendances = await this.prisma.lessonAttendance.findMany({
+      where: { lessonId },
+      select: { studentId: true },
+    });
+    const existingStudentIds = existingAttendances.map(att => att.studentId);
+
+    // Filtra apenas alunos que ainda não têm presença registrada
+    const studentsToMarkAbsent = turma.students.filter(student => !existingStudentIds.includes(student.id));
+
+    if (studentsToMarkAbsent.length === 0) {
+      return { 
+        message: 'Todos os alunos da turma já possuem presença registrada para esta aula',
+        markedAbsent: 0,
+        totalStudents: turma.students.length
+      };
+    }
+
+    // Cria registros de presença como "AUSENTE" para todos os alunos que não têm presença
+    const attendanceData = studentsToMarkAbsent.map(student => ({
+      lessonId,
+      studentId: student.id,
+      status: 'AUSENTE',
+      observations: 'Marcado como ausente automaticamente',
+    }));
+
+    await this.prisma.lessonAttendance.createMany({
+      data: attendanceData,
+    });
+
+    return { 
+      message: `${studentsToMarkAbsent.length} alunos marcados como ausentes`,
+      markedAbsent: studentsToMarkAbsent.length,
+      totalStudents: turma.students.length,
+      studentsMarked: studentsToMarkAbsent.map(s => ({ id: s.id, name: s.name }))
+    };
+  }
+
   // Criar nova presença de aula
   async createLessonAttendance(createDto: CreateLessonAttendanceDto) {
     // Garante unicidade por lessonId + studentId
     const existing = await this.prisma.lessonAttendance.findUnique({
       where: {
+
         lessonId_studentId: {
           lessonId: createDto.lessonId,
           studentId: createDto.studentId,
@@ -1849,14 +2062,14 @@ export class SuperadminService {
       throw new NotFoundException('Presença não encontrada');
     }
     Object.keys(patchDto).forEach(key => {
-      if (patchDto[key] === '') {
-        patchDto[key] = undefined;
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
       }
     });
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if (patchDto[key] !== undefined) {
-        updateData[key] = patchDto[key];
+      if ((patchDto as any)[key] !== undefined) {
+        updateData[key] = (patchDto as any)[key];
       }
     }
     const updated = await this.prisma.lessonAttendance.update({ where: { id }, data: updateData });
@@ -2034,4 +2247,6 @@ export class SuperadminService {
 
     return { message: 'Assinatura excluída com sucesso' };
   }
+
+  
 }

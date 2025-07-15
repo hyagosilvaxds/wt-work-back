@@ -1,6 +1,8 @@
+
 import { CreateClientDto, PatchClientDto } from './dto/client.dto';
 import { LinkUserToClientDto } from './dto/client-link-user.dto';
 import { UploadSignatureDto } from './dto/upload-signature.dto';
+import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
   
 import { 
   Controller, 
@@ -312,7 +314,7 @@ export class SuperadminController {
   @RequirePermissions('CREATE_USERS')
   @HttpCode(HttpStatus.CREATED)
   @UsePipes(new ValidationPipe({ transform: true }))
-  async createStudent(@Body() createStudentDto: any) {
+  async createStudent(@Body() createStudentDto: CreateStudentDto) {
     return this.superadminService.createStudent(createStudentDto);
   }
 
@@ -342,7 +344,7 @@ export class SuperadminController {
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async patchStudent(
     @Param('id') id: string,
-    @Body() patchDto: any,
+    @Body() patchDto: PatchStudentDto,
   ) {
     return this.superadminService.patchStudent(id, patchDto);
   }
@@ -469,6 +471,13 @@ export class SuperadminController {
     return this.superadminService.addStudentsToClass(id, addStudentsDto);
   }
 
+  // Buscar todas as presenças de aula de uma turma
+  @Get('class/:classId/lesson-attendance')
+  @RequirePermissions('VIEW_USERS')
+  async getLessonAttendanceByClassId(@Param('classId') classId: string) {
+    return this.superadminService.getLessonAttendanceByClassId(classId);
+  }
+
   // Remover alunos da turma
   @Delete('classes/:id/students')
   @RequirePermissions('EDIT_USERS')
@@ -524,6 +533,17 @@ export class SuperadminController {
   @HttpCode(HttpStatus.OK)
   async deleteLesson(@Param('id') id: string) {
     return this.superadminService.deleteLesson(id);
+  }
+
+  // Marcar todos os alunos como ausentes em uma aula específica
+  @Post('classes/:classId/lessons/:lessonId/mark-all-absent')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async markAllStudentsAbsent(
+    @Param('classId') classId: string,
+    @Param('lessonId') lessonId: string,
+  ) {
+    return this.superadminService.markAllStudentsAbsent(classId, lessonId);
   }
 
   // --- LESSON ATTENDANCE CRUD ---
@@ -644,5 +664,19 @@ export class SuperadminController {
   @HttpCode(HttpStatus.OK)
   async deleteSignature(@Param('instructorId') instructorId: string) {
     return this.superadminService.deleteSignature(instructorId);
+  }
+
+   // Buscar estudantes de uma empresa (cliente)
+  @Get('clients/:clientId/students')
+  @RequirePermissions('VIEW_USERS')
+  async getEmpresaStudents(
+    @Param('clientId') clientId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getEmpresaStudents(clientId, pageNum, limitNum, search);
   }
 }

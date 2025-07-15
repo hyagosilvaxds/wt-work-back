@@ -1,4 +1,4 @@
-import { IsArray, IsNotEmpty, IsString, ArrayMinSize } from 'class-validator';
+import { IsArray, IsNotEmpty, IsString, ArrayMinSize, IsUUID } from 'class-validator';
 
 export class AddStudentsToClassDto {
   @IsArray()
