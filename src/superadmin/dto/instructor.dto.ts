@@ -1,39 +1,29 @@
-import { IsEmail, IsOptional, IsString, IsBoolean, MinLength, IsEnum, IsArray } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsBoolean, MinLength, IsArray } from 'class-validator';
 
 export class CreateInstructorUserDto {
-  // Dados do usuário
-  @IsString()
-  name: string;
-
-  @IsEmail()
-  email: string;
-
-  @IsString()
-  @MinLength(6)
-  password: string;
-
+  // Relacionamento com usuário (opcional)
   @IsOptional()
   @IsString()
-  bio?: string;
+  userId?: string;
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  skillIds?: string[];
-
+  // Informações básicas
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 
-  // Dados do instrutor
+  @IsString()
+  name: string;
+
   @IsOptional()
   @IsString()
   corporateName?: string;
 
+  // Tipo de pessoa
   @IsOptional()
-  @IsEnum(['FISICA', 'JURIDICA'])
-  personType?: string;
+  @IsString()
+  personType?: string; // FISICA ou JURIDICA
 
+  // Documentos
   @IsOptional()
   @IsString()
   cpf?: string;
@@ -50,6 +40,7 @@ export class CreateInstructorUserDto {
   @IsString()
   stateRegistration?: string;
 
+  // Endereço
   @IsOptional()
   @IsString()
   zipCode?: string;
@@ -74,6 +65,7 @@ export class CreateInstructorUserDto {
   @IsString()
   state?: string;
 
+  // Contatos
   @IsOptional()
   @IsString()
   landlineAreaCode?: string;
@@ -91,9 +83,10 @@ export class CreateInstructorUserDto {
   mobileNumber?: string;
 
   @IsOptional()
-  @IsString()
-  instructorEmail?: string;
+  @IsEmail()
+  email?: string;
 
+  // Informações profissionais
   @IsOptional()
   @IsString()
   education?: string;
@@ -102,10 +95,12 @@ export class CreateInstructorUserDto {
   @IsString()
   registrationNumber?: string;
 
+  // Informações adicionais
   @IsOptional()
   @IsString()
   observations?: string;
 }
+
 
 export class LinkUserToInstructorDto {
   @IsString()

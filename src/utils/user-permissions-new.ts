@@ -94,11 +94,11 @@ async function createInstructorUser(userData: {
   skillIds?: string[];
 }) {
   const role = await prisma.role.findUnique({
-    where: { name: 'INSTRUCTOR' },
+    where: { name: 'INSTRUTOR' },
   });
 
   if (!role) {
-    throw new Error('Role INSTRUCTOR não encontrada');
+    throw new Error('Role INSTRUTOR não encontrada');
   }
 
   const user = await prisma.user.create({

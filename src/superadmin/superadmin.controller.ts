@@ -1,3 +1,6 @@
+import { CreateClientDto, PatchClientDto } from './dto/client.dto';
+import { LinkUserToClientDto } from './dto/client-link-user.dto';
+  
 import { 
   Controller, 
   Get, 
@@ -15,7 +18,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { SuperadminService } from './superadmin.service';
-import { CreateUserDto, UpdateUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
+import { CreateUserDto, UpdateUserDto, PatchUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
 import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instructor.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
@@ -24,6 +27,62 @@ import { RequirePermissions } from '../auth/permissions.decorator';
 @Controller('superadmin')
 @UseGuards(AuthGuard, PermissionsGuard)
 export class SuperadminController {
+
+  // --- CLIENT CRUD ---
+
+  @Post('clients')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createClient(@Body() createClientDto: CreateClientDto) {
+    return this.superadminService.createClient(createClientDto);
+  }
+
+  @Get('clients/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getClientById(@Param('id') id: string) {
+    return this.superadminService.getClientById(id);
+  }
+
+  @Get('clients')
+  @RequirePermissions('VIEW_USERS')
+  async getClients(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getClients(pageNum, limitNum, search);
+  }
+
+  @Patch('clients/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchClient(
+    @Param('id') id: string,
+    @Body() patchDto: PatchClientDto,
+  ) {
+    return this.superadminService.patchClient(id, patchDto);
+  }
+
+  @Delete('clients/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteClient(@Param('id') id: string) {
+    return this.superadminService.deleteClient(id);
+  }
+
+  @Post('clients/:id/link-user')
+  @RequirePermissions('EDIT_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async linkUserToClient(
+    @Param('id') clientId: string,
+    @Body() linkUserDto: LinkUserToClientDto,
+  ) {
+    return this.superadminService.linkUserToClient(clientId, linkUserDto);
+  }
   constructor(private readonly superadminService: SuperadminService) {}
 
   // Listar todos os usuários
@@ -56,6 +115,15 @@ export class SuperadminController {
     return this.superadminService.createUser(createUserDto);
   }
 
+  // Criar novo instrutor
+  @Post('instructors')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createInstructor(@Body() createInstructorUserDto: CreateInstructorUserDto) {
+    return this.superadminService.createInstructor(createInstructorUserDto);
+  }
+
   // Vincular usuário a instrutor existente
   @Post('instructors/link-user')
   @RequirePermissions('CREATE_USERS')
@@ -74,6 +142,17 @@ export class SuperadminController {
     @Body() updateUserDto: UpdateUserDto,
   ) {
     return this.superadminService.updateUser(id, updateUserDto);
+  }
+
+  // Atualizar usuário parcialmente (PATCH)
+  @Patch('users/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async patchUser(
+    @Param('id') id: string,
+    @Body() patchUserDto: PatchUserDto,
+  ) {
+    return this.superadminService.patchUser(id, patchUserDto);
   }
 
   // Deletar usuário
@@ -183,5 +262,132 @@ export class SuperadminController {
   @RequirePermissions('VIEW_USERS')
   async getLightInstructors() {
     return this.superadminService.getLightInstructors();
+  }
+  
+  // Buscar instrutor por ID
+  @Get('instructors/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getInstructorById(@Param('id') id: string) {
+    return this.superadminService.getInstructorById(id);
+  }
+
+  // Atualizar parcialmente instrutor (PATCH)
+  @Patch('instructors/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchInstructor(
+    @Param('id') id: string,
+    @Body() patchDto: Partial<CreateInstructorUserDto>,
+  ) {
+    return this.superadminService.patchInstructor(id, patchDto);
+  }
+
+  // Deletar instrutor
+  @Delete('instructors/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteInstructor(@Param('id') id: string) {
+    return this.superadminService.deleteInstructor(id);
+  }
+
+  // --- STUDENT CRUD ---
+
+  // Criar novo estudante
+  @Post('students')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createStudent(@Body() createStudentDto: any) {
+    return this.superadminService.createStudent(createStudentDto);
+  }
+
+  // Buscar estudante por ID
+  @Get('students/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getStudentById(@Param('id') id: string) {
+    return this.superadminService.getStudentById(id);
+  }
+
+  // Listar todos os estudantes
+  @Get('students')
+  @RequirePermissions('VIEW_USERS')
+  async getStudents(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getStudents(pageNum, limitNum, search);
+  }
+
+  // Atualizar parcialmente estudante (PATCH)
+  @Patch('students/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchStudent(
+    @Param('id') id: string,
+    @Body() patchDto: any,
+  ) {
+    return this.superadminService.patchStudent(id, patchDto);
+  }
+
+  // Deletar estudante
+  @Delete('students/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteStudent(@Param('id') id: string) {
+    return this.superadminService.deleteStudent(id);
+  }
+
+
+  // --- TRAINING CRUD ---
+
+  // Criar novo treinamento
+  @Post('trainings')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createTraining(@Body() dto: { title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }) {
+    return this.superadminService.createTraining(dto);
+  }
+
+  // Listar todos os treinamentos
+  @Get('trainings')
+  @RequirePermissions('VIEW_USERS')
+  async getTrainings(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getTrainings(pageNum, limitNum, search);
+  }
+
+  // Buscar treinamento por ID
+  @Get('trainings/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getTrainingById(@Param('id') id: string) {
+    return this.superadminService.getTrainingById(id);
+  }
+
+  // Atualizar parcialmente treinamento (PATCH)
+  @Patch('trainings/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchTraining(
+    @Param('id') id: string,
+    @Body() patchDto: Partial<{ title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }>,
+  ) {
+    return this.superadminService.patchTraining(id, patchDto);
+  }
+
+  // Deletar treinamento
+  @Delete('trainings/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteTraining(@Param('id') id: string) {
+    return this.superadminService.deleteTraining(id);
   }
 }

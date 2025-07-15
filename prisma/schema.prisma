@@ -1,3 +1,46 @@
+// --- NOVOS MODELOS DE AULA E PRESENÇA ---
+
+model Lesson {
+  id             String      @id @default(cuid())
+  title          String
+  description    String?     @db.Text
+  startDate      DateTime    // Data/hora de início da aula
+  endDate        DateTime    // Data/hora de término da aula
+  status         String      @default("AGENDADA") // AGENDADA, REALIZADA, CANCELADA
+  location       String?
+  observations   String?     @db.Text
+
+  // Relacionamentos
+  instructorId   String
+  instructor     Instructor  @relation(fields: [instructorId], references: [id])
+  clientId       String?
+  client         Client?     @relation(fields: [clientId], references: [id])
+  classId        String?
+  class          Class?      @relation(fields: [classId], references: [id])
+  attendances    LessonAttendance[]
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([instructorId])
+  @@index([clientId])
+  @@index([classId])
+}
+
+model LessonAttendance {
+  id           String    @id @default(cuid())
+  lessonId     String
+  lesson       Lesson    @relation(fields: [lessonId], references: [id])
+  studentId    String
+  student      Student   @relation(fields: [studentId], references: [id])
+  status       String    @default("PENDENTE") // PRESENTE, AUSENTE, JUSTIFICADO, PENDENTE
+  observations String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@unique([lessonId, studentId])
+  @@index([studentId])
+}
 generator client {
   provider = "prisma-client-js"
 }
@@ -71,6 +114,8 @@ model User {
   
   // Relacionamento com instrutor
   instructor        Instructor?
+  // Relacionamento com cliente
+  client            Client?
 }
 
 model Instructor {
@@ -117,6 +162,7 @@ model Instructor {
   // Relacionamentos
   trainings             Training[] @relation("InstructorTrainings")
   classes               Class[]    @relation("ClassInstructor")
+  lessons               Lesson[]
 
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -206,6 +252,7 @@ model Student {
   classes           Class[]             @relation("ClassStudents")
   certificates      Certificate[]
   accountsReceivable AccountReceivable[]
+  lessonAttendances  LessonAttendance[]
   
   // Índices para otimização de consultas
   @@index([cpf])
@@ -247,16 +294,19 @@ model Client {
   // Informações adicionais
   observations          String?   @db.Text
   
-  // Dados de acesso ao sistema
+  // Dados do responsável
   responsibleName       String?   // Nome do responsável
   responsibleEmail      String?   // Email do responsável
   responsiblePhone      String?   // Telefone do responsável
-  systemUsername        String?   @unique // Usuário
-  systemPassword        String?   // Senha (criptografada)
+
+  // Relacionamento com usuário do sistema
+  userId                String?   @unique
+  user                  User?     @relation(fields: [userId], references: [id])
   
   // Relacionamentos
   students              Student[]
   classes               Class[]
+  lessons               Lesson[]
   
   // Timestamps
   createdAt             DateTime  @default(now())
@@ -266,7 +316,6 @@ model Client {
   @@index([cpf])
   @@index([cnpj])
   @@index([email])
-  @@index([systemUsername])
 }
 
 model Training {
@@ -313,6 +362,7 @@ model Class {
   observations String?  @db.Text               // Observações
   
   students     Student[]   @relation("ClassStudents")
+  lessons      Lesson[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   

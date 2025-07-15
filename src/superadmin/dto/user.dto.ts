@@ -51,6 +51,33 @@ export class UpdateUserDto {
   bio?: string;
 }
 
+export class PatchUserDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  password?: string;
+
+  @IsOptional()
+  @IsString()
+  roleId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isActive?: boolean;
+
+  @IsOptional()
+  @IsString()
+  bio?: string;
+}
+
 export class CreateRoleDto {
   @IsString()
   name: string;
