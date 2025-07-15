@@ -7,9 +7,77 @@ import { User, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { CreateUserDto, UpdateUserDto, PatchUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
 import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instructor.dto';
+import { UploadSignatureDto, UpdateSignatureDto } from './dto/upload-signature.dto';
+import * as fs from 'fs';
+import * as path from 'path';
+
+import { CreateClassDto, PatchClassDto } from './dto/class.dto';
+import { CreateLessonDto, PatchLessonDto } from './dto/lesson.dto';
+import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesson-attendance.dto';
 
 @Injectable()
 export class SuperadminService {
+  /**
+   * Adiciona alunos a uma turma
+   */
+  async addStudentsToClass(classId: string, dto: { studentIds: string[] }) {
+    // Verifica se a turma existe
+    const turma = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: { students: true },
+    });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+    // Busca os estudantes
+    const students = await this.prisma.student.findMany({
+      where: { id: { in: dto.studentIds } },
+    });
+    if (students.length !== dto.studentIds.length) {
+      throw new BadRequestException('Um ou mais estudantes não encontrados');
+    }
+    // Atualiza relação N:N
+    await this.prisma.class.update({
+      where: { id: classId },
+      data: {
+        students: {
+          connect: dto.studentIds.map(id => ({ id })),
+        },
+      },
+    });
+    return { message: 'Alunos adicionados à turma com sucesso' };
+  }
+
+  /**
+   * Remove alunos de uma turma
+   */
+  async removeStudentsFromClass(classId: string, dto: { studentIds: string[] }) {
+    // Verifica se a turma existe
+    const turma = await this.prisma.class.findUnique({
+      where: { id: classId },
+      include: { students: true },
+    });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+    // Busca os estudantes
+    const students = await this.prisma.student.findMany({
+      where: { id: { in: dto.studentIds } },
+    });
+    if (students.length !== dto.studentIds.length) {
+      throw new BadRequestException('Um ou mais estudantes não encontrados');
+    }
+    // Atualiza relação N:N
+    await this.prisma.class.update({
+      where: { id: classId },
+      data: {
+        students: {
+          disconnect: dto.studentIds.map(id => ({ id })),
+        },
+      },
+    });
+    return { message: 'Alunos removidos da turma com sucesso' };
+  }
   // Atualizar parcialmente cliente (PATCH)
   async patchClient(id: string, patchDto: PatchClientDto) {
     const client = await this.prisma.client.findUnique({ where: { id } });
@@ -1429,5 +1497,493 @@ export class SuperadminService {
     }
     await this.prisma.student.delete({ where: { id } });
     return { message: 'Estudante excluído com sucesso' };
+  }
+
+  // --- CLASS CRUD ---
+
+  // Criar nova turma
+  async createClass(createClassDto: CreateClassDto) {
+    // Verifica se existe a combinação de trainingId, instructorId, roomId e startDate
+    const existing = await this.prisma.class.findFirst({
+      where: {
+        trainingId: createClassDto.trainingId,
+        instructorId: createClassDto.instructorId,
+       
+        startDate: createClassDto.startDate,
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('Já existe uma turma com esses dados');
+    }
+    // Remove strings vazias dos campos opcionais
+    Object.keys(createClassDto).forEach(key => {
+      if (createClassDto[key] === '') {
+        createClassDto[key] = undefined;
+      }
+    });
+    const turma = await this.prisma.class.create({ data: createClassDto });
+    return turma;
+  }
+
+  // Buscar turma por ID
+  async getClassById(id: string) {
+    const turma = await this.prisma.class.findUnique({
+      where: { id },
+      include: {
+        training: true,
+        instructor: true,
+        
+        client: true,
+        students: true,
+        lessons: true,
+      },
+    });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+    return turma;
+  }
+
+  // Listar todas as turmas (com paginação e busca)
+  async getClasses(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    const where: any = search
+      ? {
+          OR: [
+            { type: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            { location: { contains: search, mode: 'insensitive' } },
+            { observations: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: true,
+          instructor: true,
+          
+          client: true,
+          students: true,
+          lessons: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Atualizar parcialmente turma (PATCH)
+  async patchClass(id: string, patchDto: PatchClassDto) {
+    const turma = await this.prisma.class.findUnique({ where: { id } });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+    // Remove strings vazias dos campos opcionais
+    Object.keys(patchDto).forEach(key => {
+      if (patchDto[key] === '') {
+        patchDto[key] = undefined;
+      }
+    });
+    const updateData: any = {};
+    for (const key of Object.keys(patchDto)) {
+      if (patchDto[key] !== undefined) {
+        updateData[key] = patchDto[key];
+      }
+    }
+    const updated = await this.prisma.class.update({ where: { id }, data: updateData });
+    return updated;
+  }
+
+  // Deletar turma
+  async deleteClass(id: string) {
+    const turma = await this.prisma.class.findUnique({ where: { id } });
+    if (!turma) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+    await this.prisma.class.delete({ where: { id } });
+    return { message: 'Turma excluída com sucesso' };
+  }
+
+  // --- LESSON CRUD ---
+
+  // Criar nova aula
+  async createLesson(createLessonDto: CreateLessonDto) {
+    // Remove strings vazias dos campos opcionais
+    Object.keys(createLessonDto).forEach(key => {
+      if (createLessonDto[key] === '') {
+        createLessonDto[key] = undefined;
+      }
+    });
+    const lesson = await this.prisma.lesson.create({ data: createLessonDto });
+    return lesson;
+  }
+
+  // Buscar aula por ID
+  async getLessonById(id: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id },
+      include: {
+        instructor: true,
+        client: true,
+        class: true,
+        attendances: true,
+      },
+    });
+    if (!lesson) {
+      throw new NotFoundException('Aula não encontrada');
+    }
+    return lesson;
+  }
+
+  // Listar todas as aulas (com paginação e busca)
+  async getLessons(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    const where: any = search
+      ? {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { status: { contains: search, mode: 'insensitive' } },
+            { location: { contains: search, mode: 'insensitive' } },
+            { observations: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+    const [lessons, total] = await Promise.all([
+      this.prisma.lesson.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          instructor: true,
+          client: true,
+          class: true,
+          attendances: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.lesson.count({ where }),
+    ]);
+    return {
+      lessons,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Atualizar parcialmente aula (PATCH)
+  async patchLesson(id: string, patchDto: PatchLessonDto) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id } });
+    if (!lesson) {
+      throw new NotFoundException('Aula não encontrada');
+    }
+    Object.keys(patchDto).forEach(key => {
+      if (patchDto[key] === '') {
+        patchDto[key] = undefined;
+      }
+    });
+    const updateData: any = {};
+    for (const key of Object.keys(patchDto)) {
+      if (patchDto[key] !== undefined) {
+        updateData[key] = patchDto[key];
+      }
+    }
+    const updated = await this.prisma.lesson.update({ where: { id }, data: updateData });
+    return updated;
+  }
+
+  // Deletar aula
+  async deleteLesson(id: string) {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id } });
+    if (!lesson) {
+      throw new NotFoundException('Aula não encontrada');
+    }
+    await this.prisma.lesson.delete({ where: { id } });
+    return { message: 'Aula excluída com sucesso' };
+  }
+
+  // --- LESSON ATTENDANCE CRUD ---
+
+  // Criar nova presença de aula
+  async createLessonAttendance(createDto: CreateLessonAttendanceDto) {
+    // Garante unicidade por lessonId + studentId
+    const existing = await this.prisma.lessonAttendance.findUnique({
+      where: {
+        lessonId_studentId: {
+          lessonId: createDto.lessonId,
+          studentId: createDto.studentId,
+        },
+      },
+    });
+    if (existing) {
+      throw new BadRequestException('Já existe presença para este aluno nesta aula');
+    }
+    Object.keys(createDto).forEach(key => {
+      if (createDto[key] === '') {
+        createDto[key] = undefined;
+      }
+    });
+    const attendance = await this.prisma.lessonAttendance.create({ data: createDto });
+    return attendance;
+  }
+
+  // Buscar presença por ID
+  async getLessonAttendanceById(id: string) {
+    const attendance = await this.prisma.lessonAttendance.findUnique({
+      where: { id },
+      include: {
+        lesson: true,
+        student: true,
+      },
+    });
+    if (!attendance) {
+      throw new NotFoundException('Presença não encontrada');
+    }
+    return attendance;
+  }
+
+  // Listar todas as presenças (com paginação e busca)
+  async getLessonAttendances(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    // Busca por status ou observações
+    const where: any = search
+      ? {
+          OR: [
+            { status: { contains: search, mode: 'insensitive' } },
+            { observations: { contains: search, mode: 'insensitive' } },
+          ],
+        }
+      : {};
+    const [attendances, total] = await Promise.all([
+      this.prisma.lessonAttendance.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          lesson: true,
+          student: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.lessonAttendance.count({ where }),
+    ]);
+    return {
+      attendances,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Atualizar parcialmente presença (PATCH)
+  async patchLessonAttendance(id: string, patchDto: PatchLessonAttendanceDto) {
+    const attendance = await this.prisma.lessonAttendance.findUnique({ where: { id } });
+    if (!attendance) {
+      throw new NotFoundException('Presença não encontrada');
+    }
+    Object.keys(patchDto).forEach(key => {
+      if (patchDto[key] === '') {
+        patchDto[key] = undefined;
+      }
+    });
+    const updateData: any = {};
+    for (const key of Object.keys(patchDto)) {
+      if (patchDto[key] !== undefined) {
+        updateData[key] = patchDto[key];
+      }
+    }
+    const updated = await this.prisma.lessonAttendance.update({ where: { id }, data: updateData });
+    return updated;
+  }
+
+  // Deletar presença
+  async deleteLessonAttendance(id: string) {
+    const attendance = await this.prisma.lessonAttendance.findUnique({ where: { id } });
+    if (!attendance) {
+      throw new NotFoundException('Presença não encontrada');
+    }
+    await this.prisma.lessonAttendance.delete({ where: { id } });
+    return { message: 'Presença excluída com sucesso' };
+  }
+
+  // --- SIGNATURE CRUD ---
+
+  // Criar ou atualizar assinatura de instrutor
+  async uploadSignature(instructorId: string, filename: string) {
+    // Verificar se o instrutor existe
+    const instructor = await this.prisma.instructor.findUnique({ 
+      where: { id: instructorId } 
+    });
+    
+    if (!instructor) {
+      throw new NotFoundException('Instrutor não encontrado');
+    }
+
+    // Verificar se já existe uma assinatura para este instrutor
+    const existingSignature = await this.prisma.signature.findUnique({
+      where: { instructorId }
+    });
+
+    const pngPath = `/uploads/signatures/${filename}`;
+
+    if (existingSignature) {
+      // Deletar arquivo antigo se existir
+      const oldFilePath = path.join(process.cwd(), 'uploads', 'signatures', path.basename(existingSignature.pngPath));
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+      }
+
+      // Atualizar assinatura existente
+      const updatedSignature = await this.prisma.signature.update({
+        where: { instructorId },
+        data: { pngPath },
+        include: {
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return {
+        message: 'Assinatura atualizada com sucesso',
+        signature: updatedSignature
+      };
+    } else {
+      // Criar nova assinatura
+      const newSignature = await this.prisma.signature.create({
+        data: {
+          instructorId,
+          pngPath
+        },
+        include: {
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return {
+        message: 'Assinatura criada com sucesso',
+        signature: newSignature
+      };
+    }
+  }
+
+  // Buscar assinatura por ID do instrutor
+  async getSignatureByInstructorId(instructorId: string) {
+    const signature = await this.prisma.signature.findUnique({
+      where: { instructorId },
+      include: {
+        instructor: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    if (!signature) {
+      throw new NotFoundException('Assinatura não encontrada para este instrutor');
+    }
+
+    return signature;
+  }
+
+  // Listar todas as assinaturas
+  async getAllSignatures(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    
+    const where: any = {};
+    
+    if (search) {
+      where.instructor = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } }
+        ]
+      };
+    }
+
+    const [signatures, total] = await Promise.all([
+      this.prisma.signature.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      }),
+      this.prisma.signature.count({ where })
+    ]);
+
+    return {
+      signatures,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  // Deletar assinatura
+  async deleteSignature(instructorId: string) {
+    const signature = await this.prisma.signature.findUnique({
+      where: { instructorId }
+    });
+
+    if (!signature) {
+      throw new NotFoundException('Assinatura não encontrada');
+    }
+
+    // Deletar arquivo físico
+    const filePath = path.join(process.cwd(), 'uploads', 'signatures', path.basename(signature.pngPath));
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Deletar registro do banco
+    await this.prisma.signature.delete({
+      where: { instructorId }
+    });
+
+    return { message: 'Assinatura excluída com sucesso' };
   }
 }

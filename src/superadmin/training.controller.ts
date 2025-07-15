@@ -1,12 +1,13 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { SuperadminService } from './superadmin.service';
+import { CreateTrainingDto } from './dto/create-training.dto';
 
 @Controller('trainings')
 export class TrainingController {
   constructor(private readonly superadminService: SuperadminService) {}
 
   @Post()
-  async create(@Body() dto: { title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }) {
+  async create(@Body() dto: CreateTrainingDto) {
     return this.superadminService.createTraining(dto);
   }
 
@@ -25,7 +26,7 @@ export class TrainingController {
   }
 
   @Patch(':id')
-  async update(@Param('id') id: string, @Body() dto: Partial<{ title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }>) {
+  async update(@Param('id') id: string, @Body() dto: Partial<CreateTrainingDto>) {
     return this.superadminService.patchTraining(id, dto);
   }
 

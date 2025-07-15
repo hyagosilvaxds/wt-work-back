@@ -1,5 +1,6 @@
 import { CreateClientDto, PatchClientDto } from './dto/client.dto';
 import { LinkUserToClientDto } from './dto/client-link-user.dto';
+import { UploadSignatureDto } from './dto/upload-signature.dto';
   
 import { 
   Controller, 
@@ -16,10 +17,24 @@ import {
   HttpCode,
   UsePipes,
   ValidationPipe,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import * as fs from 'fs';
+
 import { SuperadminService } from './superadmin.service';
+import { CreateClassDto, PatchClassDto } from './dto/class.dto';
+import { AddStudentsToClassDto } from './dto/add-students-to-class.dto';
+import { RemoveStudentsFromClassDto } from './dto/remove-students-from-class.dto';
+import { CreateLessonDto, PatchLessonDto } from './dto/lesson.dto';
+import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesson-attendance.dto';
 import { CreateUserDto, UpdateUserDto, PatchUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
 import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instructor.dto';
+import { CreateTrainingDto } from './dto/create-training.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -348,7 +363,7 @@ export class SuperadminController {
   @RequirePermissions('CREATE_USERS')
   @HttpCode(HttpStatus.CREATED)
   @UsePipes(new ValidationPipe({ transform: true }))
-  async createTraining(@Body() dto: { title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }) {
+  async createTraining(@Body() dto: CreateTrainingDto) {
     return this.superadminService.createTraining(dto);
   }
 
@@ -378,7 +393,7 @@ export class SuperadminController {
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   async patchTraining(
     @Param('id') id: string,
-    @Body() patchDto: Partial<{ title: string; description?: string; durationHours: number; isActive?: boolean; validityDays?: number }>,
+    @Body() patchDto: Partial<CreateTrainingDto>,
   ) {
     return this.superadminService.patchTraining(id, patchDto);
   }
@@ -389,5 +404,245 @@ export class SuperadminController {
   @HttpCode(HttpStatus.OK)
   async deleteTraining(@Param('id') id: string) {
     return this.superadminService.deleteTraining(id);
+  }
+
+
+  // --- CLASS CRUD ---
+
+  // Criar nova turma
+  @Post('classes')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createClass(@Body() createClassDto: CreateClassDto) {
+    return this.superadminService.createClass(createClassDto);
+  }
+
+  // Buscar turma por ID
+  @Get('classes/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getClassById(@Param('id') id: string) {
+    return this.superadminService.getClassById(id);
+  }
+
+  // Listar todas as turmas
+  @Get('classes')
+  @RequirePermissions('VIEW_USERS')
+  async getClasses(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getClasses(pageNum, limitNum, search);
+  }
+
+  // Atualizar parcialmente turma (PATCH)
+  @Patch('classes/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchClass(
+    @Param('id') id: string,
+    @Body() patchDto: PatchClassDto,
+  ) {
+    return this.superadminService.patchClass(id, patchDto);
+  }
+
+  // Deletar turma
+  @Delete('classes/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteClass(@Param('id') id: string) {
+    return this.superadminService.deleteClass(id);
+  }
+
+  // Adicionar alunos à turma
+  @Post('classes/:id/students')
+  @RequirePermissions('EDIT_USERS')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async addStudentsToClass(
+    @Param('id') id: string,
+    @Body() addStudentsDto: AddStudentsToClassDto,
+  ) {
+    return this.superadminService.addStudentsToClass(id, addStudentsDto);
+  }
+
+  // Remover alunos da turma
+  @Delete('classes/:id/students')
+  @RequirePermissions('EDIT_USERS')
+  @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async removeStudentsFromClass(
+    @Param('id') id: string,
+    @Body() removeStudentsDto: RemoveStudentsFromClassDto,
+  ) {
+    return this.superadminService.removeStudentsFromClass(id, removeStudentsDto);
+  }
+
+  // --- LESSON CRUD ---
+
+  @Post('lessons')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createLesson(@Body() createLessonDto: CreateLessonDto) {
+    return this.superadminService.createLesson(createLessonDto);
+  }
+
+  @Get('lessons/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getLessonById(@Param('id') id: string) {
+    return this.superadminService.getLessonById(id);
+  }
+
+  @Get('lessons')
+  @RequirePermissions('VIEW_USERS')
+  async getLessons(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getLessons(pageNum, limitNum, search);
+  }
+
+  @Patch('lessons/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchLesson(
+    @Param('id') id: string,
+    @Body() patchDto: PatchLessonDto,
+  ) {
+    return this.superadminService.patchLesson(id, patchDto);
+  }
+
+  @Delete('lessons/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteLesson(@Param('id') id: string) {
+    return this.superadminService.deleteLesson(id);
+  }
+
+  // --- LESSON ATTENDANCE CRUD ---
+
+  @Post('lesson-attendances')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createLessonAttendance(@Body() createDto: CreateLessonAttendanceDto) {
+    return this.superadminService.createLessonAttendance(createDto);
+  }
+
+  @Get('lesson-attendances/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getLessonAttendanceById(@Param('id') id: string) {
+    return this.superadminService.getLessonAttendanceById(id);
+  }
+
+  @Get('lesson-attendances')
+  @RequirePermissions('VIEW_USERS')
+  async getLessonAttendances(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getLessonAttendances(pageNum, limitNum, search);
+  }
+
+  @Patch('lesson-attendances/:id')
+  @RequirePermissions('EDIT_USERS')
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async patchLessonAttendance(
+    @Param('id') id: string,
+    @Body() patchDto: PatchLessonAttendanceDto,
+  ) {
+    return this.superadminService.patchLessonAttendance(id, patchDto);
+  }
+
+  @Delete('lesson-attendances/:id')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteLessonAttendance(@Param('id') id: string) {
+    return this.superadminService.deleteLessonAttendance(id);
+  }
+
+  // --- SIGNATURE CRUD ---
+
+  // Upload de assinatura para instrutor
+  @Post('signatures/upload')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(FileInterceptor('signature', {
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const uploadPath = './uploads/signatures';
+        if (!fs.existsSync(uploadPath)) {
+          fs.mkdirSync(uploadPath, { recursive: true });
+        }
+        cb(null, uploadPath);
+      },
+      filename: (req, file, cb) => {
+        const instructorId = req.body.instructorId;
+        const fileExtension = extname(file.originalname);
+        const filename = `signature-${instructorId}-${Date.now()}${fileExtension}`;
+        cb(null, filename);
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype.match(/\/(jpg|jpeg|png)$/)) {
+        return cb(new BadRequestException('Apenas arquivos PNG, JPG e JPEG são permitidos'), false);
+      }
+      cb(null, true);
+    },
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB
+    },
+  }))
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async uploadSignature(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() uploadSignatureDto: UploadSignatureDto,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Arquivo de assinatura é obrigatório');
+    }
+
+    return this.superadminService.uploadSignature(
+      uploadSignatureDto.instructorId, 
+      file.filename
+    );
+  }
+
+  // Buscar assinatura por ID do instrutor
+  @Get('signatures/instructor/:instructorId')
+  @RequirePermissions('VIEW_USERS')
+  async getSignatureByInstructorId(@Param('instructorId') instructorId: string) {
+    return this.superadminService.getSignatureByInstructorId(instructorId);
+  }
+
+  // Listar todas as assinaturas
+  @Get('signatures')
+  @RequirePermissions('VIEW_USERS')
+  async getAllSignatures(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getAllSignatures(pageNum, limitNum, search);
+  }
+
+  // Deletar assinatura
+  @Delete('signatures/instructor/:instructorId')
+  @RequirePermissions('DELETE_USERS')
+  @HttpCode(HttpStatus.OK)
+  async deleteSignature(@Param('instructorId') instructorId: string) {
+    return this.superadminService.deleteSignature(instructorId);
   }
 }
