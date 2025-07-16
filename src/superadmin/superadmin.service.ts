@@ -1,4 +1,3 @@
- 
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { User, Prisma } from '@prisma/client';
@@ -14,7 +13,7 @@ import { CreateClassDto, PatchClassDto } from './dto/class.dto';
 import { CreateLessonDto, PatchLessonDto } from './dto/lesson.dto';
 import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesson-attendance.dto';
 import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
-// ...existing imports...
+import { ClientDashboardDto, ScheduledLessonDto } from './dto/client-dashboard.dto';
 
 @Injectable()
 export class SuperadminService {
@@ -1693,8 +1692,6 @@ export class SuperadminService {
                 { name: { contains: search, mode: 'insensitive' } },
                 { email: { contains: search, mode: 'insensitive' } },
                 { corporateName: { contains: search, mode: 'insensitive' } },
-                { cpf: { contains: search, mode: 'insensitive' } },
-                { cnpj: { contains: search, mode: 'insensitive' } },
               ]
             }},
             // Busca por cliente
@@ -1717,8 +1714,6 @@ export class SuperadminService {
         include: {
           training: true,
           instructor: true,
-          
-          client: true,
           students: true,
           lessons: true,
         },
@@ -2248,5 +2243,217 @@ export class SuperadminService {
     return { message: 'Assinatura excluída com sucesso' };
   }
 
-  
+  // Buscar próprios estudantes (empresa do usuário logado)
+  async getOwnStudents(userId: string, page: number = 1, limit: number = 10, search?: string) {
+    // Buscar o cliente vinculado ao usuário logado
+    const client = await this.prisma.client.findFirst({
+      where: { userId },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Usuário não possui empresa vinculada');
+    }
+
+    const skip = (page - 1) * limit;
+    const where: any = {
+      clientId: client.id,
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { cpf: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [students, total] = await Promise.all([
+      this.prisma.student.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          classes: {
+            include: {
+              training: true,
+              instructor: true,
+            },
+          },
+          certificates: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.student.count({ where }),
+    ]);
+
+    return {
+      students,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Buscar próprias turmas (empresa do usuário logado)
+  async getOwnClasses(userId: string, page: number = 1, limit: number = 10, search?: string) {
+    // Buscar o cliente vinculado ao usuário logado
+    const client = await this.prisma.client.findFirst({
+      where: { userId },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Usuário não possui empresa vinculada');
+    }
+
+    const skip = (page - 1) * limit;
+    const where: any = {
+      clientId: client.id,
+    };
+
+    if (search) {
+      where.OR = [
+        { type: { contains: search, mode: 'insensitive' } },
+        { status: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { observations: { contains: search, mode: 'insensitive' } },
+        { training: { 
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+        { instructor: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { corporateName: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+      ];
+    }
+
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: true,
+          instructor: true,
+          students: true,
+          lessons: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Dashboard do cliente
+  async getClientDashboard(clientId: string): Promise<ClientDashboardDto> {
+    // Validar se o cliente existe
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+    });
+    
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
+    // Buscar dados do dashboard em paralelo
+    const [
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      scheduledLessons
+    ] = await Promise.all([
+      // Quantidade total de estudantes da empresa
+      this.prisma.student.count({
+        where: { clientId }
+      }),
+      
+      // Quantidade total de turmas da empresa
+      this.prisma.class.count({
+        where: { clientId }
+      }),
+      
+      // Quantidade de aulas agendadas nas turmas da empresa
+      this.prisma.lesson.count({
+        where: { 
+          clientId,
+          status: 'AGENDADA'
+        }
+      }),
+      
+      // Quantidade de turmas com status = CONCLUIDO
+      this.prisma.class.count({
+        where: { 
+          clientId,
+          status: 'CONCLUIDO'
+        }
+      }),
+      
+      // Aulas agendadas para exibir na agenda
+      this.prisma.lesson.findMany({
+        where: { 
+          clientId,
+          status: 'AGENDADA'
+        },
+        include: {
+          instructor: {
+            select: {
+              name: true
+            }
+          },
+          class: {
+            select: {
+              training: {
+                select: {
+                  title: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { startDate: 'asc' },
+        take: 50 // Limitando a 50 aulas para não sobrecarregar
+      })
+    ]);
+
+    // Transformar as aulas agendadas para o formato do DTO
+    const scheduledLessonsDto: ScheduledLessonDto[] = scheduledLessons.map(lesson => ({
+      id: lesson.id,
+      title: lesson.title,
+      description: lesson.description,
+      startDate: lesson.startDate,
+      endDate: lesson.endDate,
+      location: lesson.location,
+      status: lesson.status,
+      instructorName: lesson.instructor.name,
+      className: lesson.class?.training?.title,
+      observations: lesson.observations
+    }));
+
+    return {
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      scheduledLessons: scheduledLessonsDto
+    };
+  }
 }

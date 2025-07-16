@@ -1,8 +1,8 @@
-
 import { CreateClientDto, PatchClientDto } from './dto/client.dto';
 import { LinkUserToClientDto } from './dto/client-link-user.dto';
 import { UploadSignatureDto } from './dto/upload-signature.dto';
 import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
+import { ClientDashboardDto } from './dto/client-dashboard.dto';
   
 import { 
   Controller, 
@@ -22,6 +22,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  Request,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -100,6 +101,13 @@ export class SuperadminController {
   ) {
     return this.superadminService.linkUserToClient(clientId, linkUserDto);
   }
+
+  @Get('clients/:id/dashboard')
+  @RequirePermissions('VIEW_USERS')
+  async getClientDashboard(@Param('id') clientId: string): Promise<ClientDashboardDto> {
+    return this.superadminService.getClientDashboard(clientId);
+  }
+  
   constructor(private readonly superadminService: SuperadminService) {}
 
   // Listar todos os usuários
@@ -678,5 +686,33 @@ export class SuperadminController {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.superadminService.getEmpresaStudents(clientId, pageNum, limitNum, search);
+  }
+
+  @Get('my-students')
+  @RequirePermissions('VIEW_STUDENTS')
+  async getOwnStudents(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const userId = req.user.id; // Extraído do JWT pelo AuthGuard
+    return this.superadminService.getOwnStudents(userId, pageNum, limitNum, search);
+  }
+
+  @Get('my-classes')
+  @RequirePermissions('VIEW_CLASSES')
+  async getOwnClasses(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const userId = req.user.id; // Extraído do JWT pelo AuthGuard
+    return this.superadminService.getOwnClasses(userId, pageNum, limitNum, search);
   }
 }
