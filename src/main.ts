@@ -10,7 +10,7 @@ async function bootstrap() {
 
   // Habilitar CORS
   app.enableCors({
-    origin: 'http://localhost:3000', // Substitua pela URL do seu frontend
+    origin: 'https://work-treinamentos.vercel.app', // Substitua pela URL do seu frontend
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

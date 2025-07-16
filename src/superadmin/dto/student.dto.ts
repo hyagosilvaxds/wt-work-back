@@ -173,6 +173,5 @@ export class PatchStudentDto {
   // Relacionamento com cliente (empresa)
   @IsOptional()
   @IsString()
-  @IsUUID()
   clientId?: string;
 }

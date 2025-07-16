@@ -664,7 +664,12 @@ export class SuperadminController {
 
   @Patch('lesson-attendances/:id')
   @RequirePermissions('EDIT_USERS')
-  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  @UsePipes(new ValidationPipe({ 
+    transform: true, 
+    whitelist: true, 
+    forbidNonWhitelisted: false,
+    skipMissingProperties: true 
+  }))
   async patchLessonAttendance(
     @Param('id') id: string,
     @Body() patchDto: PatchLessonAttendanceDto,

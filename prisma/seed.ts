@@ -22,431 +22,156 @@ async function main() {
     await prisma.client.deleteMany({});
     console.log('✅ Dados limpos');
 
-    console.log('📝 Criando permissões...');
-    // Criar permissões organizadas por módulo
-    const permissions = await Promise.all([
-      // Permissões de Usuários
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_USERS',
-          description: 'Criar Usuários',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_USERS',
-          description: 'Visualizar Usuários',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_USERS',
-          description: 'Editar Usuários',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_USERS',
-          description: 'Excluir Usuários',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'MANAGE_USERS',
-          description: 'Gerenciar Usuários (Acesso Total)',
-        },
-      }),
-
-      // Permissões de Funções (Roles)
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_ROLES',
-          description: 'Criar Funções',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_ROLES',
-          description: 'Visualizar Funções',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_ROLES',
-          description: 'Editar Funções',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_ROLES',
-          description: 'Excluir Funções',
-        },
-      }),
-
-      // Permissões de Alunos
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_STUDENTS',
-          description: 'Criar Alunos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_STUDENTS',
-          description: 'Visualizar Alunos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_STUDENTS',
-          description: 'Editar Alunos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_STUDENTS',
-          description: 'Excluir Alunos',
-        },
-      }),
-
-      // Permissões de Treinamentos
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_TRAININGS',
-          description: 'Criar Treinamentos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_TRAININGS',
-          description: 'Visualizar Todos os Treinamentos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_OWN_TRAININGS',
-          description: 'Visualizar Apenas Treinamentos Ministrados por Ele',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_TRAININGS',
-          description: 'Editar Treinamentos',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_OWN_TRAININGS',
-          description: 'Editar Apenas Treinamentos Ministrados por Ele',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_TRAININGS',
-          description: 'Excluir Treinamentos',
-        },
-      }),
-
-      // Permissões de Aulas
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_CLASSES',
-          description: 'Criar Aulas',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_CLASSES',
-          description: 'Visualizar Todas as Aulas',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_OWN_CLASSES',
-          description: 'Visualizar Apenas Aulas Ministradas por Ele',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_CLASSES',
-          description: 'Editar Aulas',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_OWN_CLASSES',
-          description: 'Editar Apenas Aulas Ministradas por Ele',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_CLASSES',
-          description: 'Excluir Aulas',
-        },
-      }),
-
-      // Permissões Financeiras
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_FINANCIAL',
-          description: 'Criar Registros Financeiros',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_FINANCIAL',
-          description: 'Visualizar Dados Financeiros',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_ACCOUNTS_RECEIVABLE',
-          description: 'Visualizar Contas a Receber',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_ACCOUNTS_PAYABLE',
-          description: 'Visualizar Contas a Pagar',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'SETTLE_ACCOUNTS',
-          description: 'Quitar Contas',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_CASH_FLOW',
-          description: 'Visualizar Fluxo de Caixa',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'MANAGE_BANK_ACCOUNTS',
-          description: 'Gerenciar Contas Bancárias',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_FINANCIAL',
-          description: 'Editar Dados Financeiros',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_FINANCIAL',
-          description: 'Excluir Registros Financeiros',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_FINANCIAL_REPORTS',
-          description: 'Visualizar Relatórios Financeiros',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'GENERATE_FINANCIAL_REPORTS',
-          description: 'Gerar Relatórios Financeiros',
-        },
-      }),
-
-      // Permissões de Certificados
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_CERTIFICATES',
-          description: 'Criar Certificados',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_OWN_CERTIFICATES',
-          description: 'Emitir Certificados Apenas de Treinamentos Ministrados por Ele',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_CERTIFICATES',
-          description: 'Visualizar Certificados',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_OWN_CERTIFICATES',
-          description: 'Visualizar Apenas Certificados de Treinamentos Ministrados por Ele',
-        },
-      }),
-
-      // Permissões de Perfil
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_PROFILE',
-          description: 'Visualizar Perfil',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_PROFILE',
-          description: 'Editar Perfil',
-        },
-      }),
-
-      // Permissões de Relatórios
-      prisma.permission.create({
-        data: {
-          name: 'CREATE_REPORTS',
-          description: 'Criar Relatórios',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_REPORTS',
-          description: 'Visualizar Relatórios',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EDIT_REPORTS',
-          description: 'Editar Relatórios',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'DELETE_REPORTS',
-          description: 'Excluir Relatórios',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'EXPORT_REPORTS',
-          description: 'Exportar Relatórios',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_ANALYTICS',
-          description: 'Visualizar Análises',
-        },
-      }),
-      prisma.permission.create({
-        data: {
-          name: 'VIEW_DASHBOARD',
-          description: 'Visualizar Dashboard',
-        },
-      }),
-    ]);
-    console.log(`✅ ${permissions.length} permissões criadas`);
-
-    console.log('👥 Criando roles...');
-    // Criar roles
-    const superAdminRole = await prisma.role.create({
+    console.log('� Criando roles...');
+    // Criar roles primeiro para usar seus IDs
+    const clienteRole = await prisma.role.create({
       data: {
-        name: 'SUPER_ADMIN',
-        description: 'Administrador com acesso total',
+        id: 'cmd3ynn8p0000vbouraxlw6xy',
+        name: 'CLIENTE',
+        description: 'Cliente com acesso limitado',
       },
     });
 
-    const instructorRole = await prisma.role.create({
+    const instrutorRole = await prisma.role.create({
       data: {
-        name: 'INSTRUCTOR',
+        id: 'cmcxv2jvf001evbxl5leu0bsm',
+        name: 'INSTRUTOR',
         description: 'Instrutor que pode ministrar aulas',
       },
     });
 
-    const studentRole = await prisma.role.create({
+    const diretorRole = await prisma.role.create({
       data: {
-        name: 'STUDENT',
-        description: 'Estudante que pode se inscrever em aulas',
+        id: 'cmcxv2jve001dvbxlngd0jium',
+        name: 'DIRETOR',
+        description: 'Diretor com acesso administrativo',
       },
     });
 
     const financialRole = await prisma.role.create({
       data: {
-        name: 'FINANCIAL',
+        id: 'cmcxv2jvh001gvbxlig3uzzwr',
+        name: 'FINANCIALs',
         description: 'Responsável financeiro com acesso a dados financeiros',
       },
     });
-    console.log('✅ 4 roles criadas');
+
+    const studentRole = await prisma.role.create({
+      data: {
+        id: 'cmcxv2jvg001fvbxljwrw5kak',
+        name: 'STUDENT',
+        description: 'Estudante que pode se inscrever em aulas',
+      },
+    });
+
+    const superadminRole = await prisma.role.create({
+      data: {
+        id: 'cmcxv2jvi001hvbxl9k3m8n4p',
+        name: 'SUPERADMIN',
+        description: 'Super Administrador com acesso total a todas as funcionalidades',
+      },
+    });
+
+    console.log('✅ 6 roles criadas');
+
+    console.log('📝 Criando permissões...');
+    // Criar permissões exatas conforme especificado com IDs específicos
+    const permissionsData = [
+      { id: 'cmcxv2ju90004vbxloh52kiik', name: 'CREATE_CERTIFICATES', description: 'Criar Certificados', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv40011vbxlso4n1m74', name: 'CREATE_CLASSES', description: 'Criar Aulas', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2juu000evbxlvb664d1h', name: 'CREATE_FINANCIAL', description: 'Criar Registros Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2juh0006vbxll8pbxuxh', name: 'CREATE_OWN_CERTIFICATES', description: 'Emitir Certificados Apenas de Treinamentos Ministrados por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000pvbxlvyuu2hp6', name: 'CREATE_REPORTS', description: 'Criar Relatórios', roles: [diretorRole.id] },
+      { id: 'cmcxv2jvb001bvbxljcr6y65v', name: 'CREATE_ROLES', description: 'Criar Funções', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv3000zvbxlkouaowse', name: 'CREATE_STUDENTS', description: 'Criar Alunos', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jut000cvbxlv0p39x1u', name: 'CREATE_TRAININGS', description: 'Criar Treinamentos', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jva001avbxl4shz2t9c', name: 'CREATE_USERS', description: 'Criar Usuários', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50014vbxlet64hzy8', name: 'DELETE_CLASSES', description: 'Excluir Aulas', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jtt0001vbxlpw0xlls3', name: 'DELETE_FINANCIAL', description: 'Excluir Registros Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000qvbxlbwucxrny', name: 'DELETE_REPORTS', description: 'Excluir Relatórios', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jum0008vbxlzvd14c56', name: 'DELETE_ROLES', description: 'Excluir Funções', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jut000bvbxlqslngy42', name: 'DELETE_STUDENTS', description: 'Excluir Alunos', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50015vbxlddjexhv7', name: 'DELETE_TRAININGS', description: 'Excluir Treinamentos', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jus0009vbxlq6iimva3', name: 'DELETE_USERS', description: 'Excluir Usuários', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2juv000gvbxlatw7poc6', name: 'EDIT_CLASSES', description: 'Editar Aulas', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jut000avbxl4etkjqct', name: 'EDIT_FINANCIAL', description: 'Editar Dados Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50016vbxlzs3x2wfh', name: 'EDIT_OWN_CLASSES', description: 'Editar Apenas Aulas Ministradas por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50013vbxl04124luk', name: 'EDIT_OWN_TRAININGS', description: 'Editar Apenas Treinamentos Ministrados por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000ovbxl0lhgnejf', name: 'EDIT_PROFILE', description: 'Editar Perfil', roles: [financialRole.id, diretorRole.id, studentRole.id] },
+      { id: 'cmcxv2jv3000xvbxlq44bbthb', name: 'EDIT_REPORTS', description: 'Editar Relatórios', roles: [diretorRole.id] },
+      { id: 'cmcxv2juz000lvbxll7te86hd', name: 'EDIT_ROLES', description: 'Editar Funções', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jut000dvbxly5ouxhws', name: 'EDIT_STUDENTS', description: 'Editar Alunos', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jsy0000vbxlqjl1y0z7', name: 'EDIT_TRAININGS', description: 'Editar Treinamentos', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000rvbxlegbjl90j', name: 'EDIT_USERS', description: 'Editar Usuários', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000svbxlghg78rm5', name: 'EXPORT_REPORTS', description: 'Exportar Relatórios', roles: [diretorRole.id] },
+      { id: 'cmcxv2ju00003vbxl4jtibfuo', name: 'GENERATE_FINANCIAL_REPORTS', description: 'Gerar Relatórios Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2juu000fvbxlvmajrth6', name: 'MANAGE_BANK_ACCOUNTS', description: 'Gerenciar Contas Bancárias', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv2000vvbxlivrktmgz', name: 'MANAGE_USERS', description: 'Gerenciar Usuários (Acesso Total)', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50017vbxljxk8tk27', name: 'SETTLE_ACCOUNTS', description: 'Quitar Contas', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jul0007vbxlruimtboh', name: 'VIEW_ACCOUNTS_PAYABLE', description: 'Visualizar Contas a Pagar', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv3000yvbxlku4nptf3', name: 'VIEW_ACCOUNTS_RECEIVABLE', description: 'Visualizar Contas a Receber', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv2000tvbxlh2w14iq0', name: 'VIEW_ANALYTICS', description: 'Visualizar Análises', roles: [financialRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv50018vbxlzbauvcvj', name: 'VIEW_CASH_FLOW', description: 'Visualizar Fluxo de Caixa', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2juv000hvbxlg8xpbqlb', name: 'VIEW_CERTIFICATES', description: 'Visualizar Certificados', roles: [clienteRole.id, instrutorRole.id, diretorRole.id, studentRole.id] },
+      { id: 'cmcxv2jv40012vbxltilwycrg', name: 'VIEW_CLASSES', description: 'Visualizar Todas as Aulas', roles: [clienteRole.id, instrutorRole.id, diretorRole.id, studentRole.id] },
+      { id: 'cmcxv2jv2000uvbxl3g13dwg9', name: 'VIEW_DASHBOARD', description: 'Visualizar Dashboard', roles: [financialRole.id, clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv2000wvbxlhededrpo', name: 'VIEW_FINANCIAL', description: 'Visualizar Dados Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jtw0002vbxlag8jp2y8', name: 'VIEW_FINANCIAL_REPORTS', description: 'Visualizar Relatórios Financeiros', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jux000kvbxlw5txdweb', name: 'VIEW_OWN_CERTIFICATES', description: 'Visualizar Apenas Certificados de Treinamentos Ministrados por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv70019vbxl5fl0nqmu', name: 'VIEW_OWN_CLASSES', description: 'Visualizar Apenas Aulas Ministradas por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2juz000mvbxlx2854l3z', name: 'VIEW_OWN_TRAININGS', description: 'Visualizar Apenas Treinamentos Ministrados por Ele', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jux000jvbxldbtlpdd7', name: 'VIEW_PROFILE', description: 'Visualizar Perfil', roles: [financialRole.id, studentRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv1000nvbxlg85qp6e3', name: 'VIEW_REPORTS', description: 'Visualizar Relatórios', roles: [financialRole.id, diretorRole.id] },
+      { id: 'cmcxv2jug0005vbxlzc2rur9t', name: 'VIEW_ROLES', description: 'Visualizar Funções', roles: [instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jv40010vbxloczasxrm', name: 'VIEW_STUDENTS', description: 'Visualizar Alunos', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jux000ivbxl3iey6axr', name: 'VIEW_TRAININGS', description: 'Visualizar Todos os Treinamentos', roles: [studentRole.id, clienteRole.id, instrutorRole.id, diretorRole.id] },
+      { id: 'cmcxv2jvb001cvbxlu1tvz4pr', name: 'VIEW_USERS', description: 'Visualizar Usuários', roles: [clienteRole.id, instrutorRole.id, diretorRole.id] },
+    ];
+
+    // Criar permissões
+    const permissions: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }> = [];
+    for (const permData of permissionsData) {
+      const permission = await prisma.permission.create({
+        data: {
+          id: permData.id,
+          name: permData.name,
+          description: permData.description,
+        },
+      });
+      permissions.push(permission);
+    }
+    console.log(`✅ ${permissions.length} permissões criadas`);
 
     console.log('🔗 Associando permissões às roles...');
-    // Associar todas as permissões ao Super Admin
-    await Promise.all(
-      permissions.map(permission =>
-        prisma.rolePermission.create({
+    // Associar permissões às roles
+    for (let i = 0; i < permissionsData.length; i++) {
+      const permData = permissionsData[i];
+      const permission = permissions[i];
+      
+      // Associar permissão ao SUPERADMIN (todas as permissões)
+      await prisma.rolePermission.create({
+        data: {
+          roleId: superadminRole.id,
+          permissionId: permission.id,
+        },
+      });
+      
+      // Associar permissão aos roles específicos
+      for (const roleId of permData.roles) {
+        await prisma.rolePermission.create({
           data: {
-            roleId: superAdminRole.id,
+            roleId: roleId,
             permissionId: permission.id,
           },
-        })
-      )
-    );
-
-    // Associar permissões específicas ao Instructor
-    const instructorPermissions = permissions.filter(p => 
-      [
-        'VIEW_OWN_TRAININGS', 'EDIT_OWN_TRAININGS', 'CREATE_TRAININGS',
-        'VIEW_OWN_CLASSES', 'EDIT_OWN_CLASSES', 'CREATE_CLASSES',
-        'VIEW_STUDENTS', 'EDIT_STUDENTS',
-        'VIEW_OWN_CERTIFICATES', 'CREATE_OWN_CERTIFICATES',
-        'VIEW_PROFILE', 'EDIT_PROFILE',
-        'VIEW_REPORTS', 'VIEW_ANALYTICS', 'VIEW_DASHBOARD'
-      ].includes(p.name)
-    );
-    
-    await Promise.all(
-      instructorPermissions.map(permission =>
-        prisma.rolePermission.create({
-          data: {
-            roleId: instructorRole.id,
-            permissionId: permission.id,
-          },
-        })
-      )
-    );
-
-    // Associar permissões específicas ao Student
-    const studentPermissions = permissions.filter(p => 
-      [
-        'VIEW_TRAININGS', 'VIEW_CLASSES', 'VIEW_CERTIFICATES',
-        'VIEW_PROFILE', 'EDIT_PROFILE'
-      ].includes(p.name)
-    );
-    
-    await Promise.all(
-      studentPermissions.map(permission =>
-        prisma.rolePermission.create({
-          data: {
-            roleId: studentRole.id,
-            permissionId: permission.id,
-          },
-        })
-      )
-    );
-
-    // Associar permissões específicas ao Financial
-    const financialPermissions = permissions.filter(p => 
-      [
-        'VIEW_FINANCIAL', 'EDIT_FINANCIAL', 'CREATE_FINANCIAL', 'DELETE_FINANCIAL',
-        'VIEW_ACCOUNTS_RECEIVABLE', 'VIEW_ACCOUNTS_PAYABLE', 'SETTLE_ACCOUNTS',
-        'VIEW_CASH_FLOW', 'MANAGE_BANK_ACCOUNTS',
-        'VIEW_FINANCIAL_REPORTS', 'GENERATE_FINANCIAL_REPORTS',
-        'VIEW_PROFILE', 'EDIT_PROFILE',
-        'VIEW_REPORTS', 'VIEW_ANALYTICS', 'VIEW_DASHBOARD'
-      ].includes(p.name)
-    );
-    
-    await Promise.all(
-      financialPermissions.map(permission =>
-        prisma.rolePermission.create({
-          data: {
-            roleId: financialRole.id,
-            permissionId: permission.id,
-          },
-        })
-      )
-    );
+        });
+      }
+    }
     console.log('✅ Permissões associadas às roles');
 
     console.log('🎯 Criando skills...');
@@ -484,12 +209,21 @@ async function main() {
 
     console.log('👤 Criando usuários...');
     // Criar usuários de exemplo
-    const superAdmin = await prisma.user.create({
+    const superadmin = await prisma.user.create({
       data: {
-        name: 'Super Admin',
-        email: 'admin@sistema.com',
+        name: 'Super Administrador',
+        email: 'superadmin@sistema.com',
         password: hashedPassword,
-        roleId: superAdminRole.id,
+        roleId: superadminRole.id,
+      },
+    });
+
+    const diretor = await prisma.user.create({
+      data: {
+        name: 'Diretor Admin',
+        email: 'diretor@sistema.com',
+        password: hashedPassword,
+        roleId: diretorRole.id,
       },
     });
 
@@ -498,7 +232,7 @@ async function main() {
         name: 'Maria Instrutora',
         email: 'maria@sistema.com',
         password: hashedPassword,
-        roleId: instructorRole.id,
+        roleId: instrutorRole.id,
         bio: 'Instrutora especializada em desenvolvimento web com mais de 5 anos de experiência.',
         skills: {
           connect: [
@@ -520,6 +254,16 @@ async function main() {
       },
     });
 
+    const clienteUser = await prisma.user.create({
+      data: {
+        name: 'Carlos Cliente',
+        email: 'carlos@sistema.com',
+        password: hashedPassword,
+        roleId: clienteRole.id,
+        bio: 'Representante da empresa cliente.',
+      },
+    });
+
     // Criar um estudante usando o modelo Student
     const student = await prisma.student.create({
       data: {
@@ -534,15 +278,17 @@ async function main() {
     console.log('🎉 Seed executado com sucesso!');
     console.log('📊 Resumo:');
     console.log(`   - ${permissions.length} permissões`);
-    console.log(`   - 4 roles`);
+    console.log(`   - 6 roles`);
     console.log(`   - ${skills.length} skills`);
     console.log(`   - 1 cliente`);
-    console.log(`   - 3 usuários + 1 estudante`);
+    console.log(`   - 5 usuários + 1 estudante`);
     console.log('');
     console.log('👤 Usuários criados:');
-    console.log(`   - Super Admin: ${superAdmin.email} | Senha: ${defaultPassword}`);
+    console.log(`   - Superadmin: ${superadmin.email} | Senha: ${defaultPassword}`);
+    console.log(`   - Diretor: ${diretor.email} | Senha: ${defaultPassword}`);
     console.log(`   - Instructor: ${instructor.email} | Senha: ${defaultPassword}`);
     console.log(`   - Financial: ${financial.email} | Senha: ${defaultPassword}`);
+    console.log(`   - Cliente: ${clienteUser.email} | Senha: ${defaultPassword}`);
     console.log(`   - Student: ${student.email} | CPF: ${student.cpf}`);
 
   } catch (error) {

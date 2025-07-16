@@ -1,53 +1,103 @@
-# API de Assinatura de Instrutor com Path de Imagem
+# API de Assinatura de Instrutor
+
+## Criar/Atualizar Assinatura de Instrutor
+
+Esta API permite criar ou atualizar a assinatura de um instrutor utilizando o path de uma imagem que já foi feita o upload através da rota `/upload/image`.
+
+## Fluxo de Uso
+
+1. **Primeiro, fazer upload da imagem:**
+   ```bash
+   curl -X POST http://localhost:4000/upload/image \
+     -F "file=@/path/to/signature.png" \
+     -F "category=signatures"
+   ```
+
+   **Resposta:**
+   ```json
+   {
+     "filename": "12345678-1234-1234-1234-123456789012.png",
+     "originalname": "signature.png",
+     "path": "uploads/images/signatures/12345678-1234-1234-1234-123456789012.png",
+     "mimetype": "image/png",
+     "size": 15360,
+     "url": "/uploads/images/signatures/12345678-1234-1234-1234-123456789012.png"
+   }
+   ```
+
+2. **Depois, criar/atualizar a assinatura do instrutor:**
 
 ## Endpoint
 
 **POST** `/superadmin/signatures`
 
-## Descrição
-
-Este endpoint permite criar ou atualizar a assinatura de um instrutor usando o path de uma imagem já salva no servidor através do sistema de upload de imagens.
-
-## Fluxo de Uso
-
-1. **Primeiro**, faça o upload da imagem usando o endpoint de upload:
-   ```bash
-   POST /upload/image
-   ```
-
-2. **Depois**, use o path retornado para criar a assinatura do instrutor:
-   ```bash
-   POST /superadmin/signatures
-   ```
-
-## Permissões Necessárias
-
-- `CREATE_USERS`
-
-## Headers
-
+**Headers:**
 ```
-Authorization: Bearer {token}
+Authorization: Bearer {seu-token-jwt}
 Content-Type: application/json
 ```
 
-## Body da Requisição
-
+**Body:**
 ```json
 {
-  "instructorId": "clxxxxx",
+  "instructorId": "clxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "imagePath": "/uploads/images/signatures/12345678-1234-1234-1234-123456789012.png"
 }
 ```
 
-### Parâmetros
+## Exemplo de Uso Completo
 
-- `instructorId` (string, obrigatório): ID do instrutor
-- `imagePath` (string, obrigatório): Path da imagem salva no servidor
+### JavaScript/TypeScript
+```javascript
+// 1. Primeiro fazer upload da imagem
+const uploadSignatureImage = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', 'signatures');
+  
+  const response = await fetch('/upload/image', {
+    method: 'POST',
+    body: formData
+  });
+  
+  return response.json();
+};
 
-## Exemplo de Resposta de Sucesso (201 Created)
+// 2. Depois criar/atualizar a assinatura
+const createInstructorSignature = async (instructorId, imagePath) => {
+  const response = await fetch('/superadmin/signatures', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      instructorId,
+      imagePath
+    })
+  });
+  
+  return response.json();
+};
 
-### Criar Nova Assinatura
+// Fluxo completo
+const handleSignatureUpload = async (file, instructorId) => {
+  try {
+    // Upload da imagem
+    const uploadResult = await uploadSignatureImage(file);
+    
+    // Criar assinatura
+    const signatureResult = await createInstructorSignature(
+      instructorId, 
+      uploadResult.url
+    );
+    
+    console.log('Assinatura criada:', signatureResult);
+  } catch (error) {
+    console.error('Erro:', error);
+  }
+};
+```
 
 ```json
 {

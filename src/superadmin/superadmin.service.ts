@@ -193,8 +193,37 @@ export class SuperadminService {
         updateData[key] = (patchDto as any)[key];
       }
     }
-    const updated = await this.prisma.client.update({ where: { id }, data: updateData });
-    return updated;
+    
+    // Se não há dados para atualizar, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    try {
+      const updated = await this.prisma.client.update({ where: { id }, data: updateData });
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        const fieldMessages = {
+          email: 'Email já está em uso para outro cliente',
+          cpf: 'CPF já está em uso para outro cliente',
+          cnpj: 'CNPJ já está em uso para outro cliente',
+        };
+        
+        for (const field of fields) {
+          if (fieldMessages[field]) {
+            throw new BadRequestException(fieldMessages[field]);
+          }
+        }
+        
+        throw new BadRequestException('Dados já existem para outro cliente');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar cliente
@@ -203,6 +232,204 @@ export class SuperadminService {
     if (!client) {
       throw new NotFoundException('Cliente não encontrado');
     }
+
+    // Verificar se o cliente possui relacionamentos que impedem a exclusão
+    const clientWithRelations = await this.prisma.client.findUnique({
+      where: { id },
+      include: {
+        students: {
+          include: {
+            classes: {
+              include: {
+                training: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
+            certificates: {
+              include: {
+                training: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        classes: {
+          include: {
+            training: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+            instructor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            students: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        lessons: {
+          include: {
+            class: {
+              include: {
+                training: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!clientWithRelations) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar estudantes vinculados
+    if (clientWithRelations.students.length > 0) {
+      const studentsWithActivity = clientWithRelations.students.filter(
+        student => student.classes.length > 0 || student.certificates.length > 0
+      );
+      
+      if (studentsWithActivity.length > 0) {
+        blockers.push({
+          type: 'students',
+          count: studentsWithActivity.length,
+          message: `Cliente possui ${studentsWithActivity.length} estudante(s) com atividade (turmas ou certificados)`,
+          details: studentsWithActivity.map(student => ({
+            studentId: student.id,
+            studentName: student.name,
+            classesCount: student.classes.length,
+            certificatesCount: student.certificates.length,
+            classes: student.classes.map(cls => ({
+              classId: cls.id,
+              trainingTitle: cls.training.title,
+            })),
+            certificates: student.certificates.map(cert => ({
+              certificateId: cert.id,
+              trainingTitle: cert.training.title,
+              issueDate: cert.issueDate,
+            })),
+          })),
+        });
+        canDelete = false;
+      } else {
+        // Estudantes sem atividade não impedem exclusão, mas informa
+        blockers.push({
+          type: 'students_inactive',
+          count: clientWithRelations.students.length,
+          message: `Cliente possui ${clientWithRelations.students.length} estudante(s) sem atividade`,
+          details: clientWithRelations.students.map(student => ({
+            studentId: student.id,
+            studentName: student.name,
+            studentEmail: student.email,
+          })),
+        });
+      }
+    }
+
+    // Verificar turmas associadas
+    if (clientWithRelations.classes.length > 0) {
+      blockers.push({
+        type: 'classes',
+        count: clientWithRelations.classes.length,
+        message: `Cliente possui ${clientWithRelations.classes.length} turma(s) associada(s)`,
+        details: clientWithRelations.classes.map(cls => ({
+          classId: cls.id,
+          trainingTitle: cls.training.title,
+          instructorName: cls.instructor.name,
+          startDate: cls.startDate,
+          endDate: cls.endDate,
+          studentsCount: cls.students.length,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar aulas associadas
+    if (clientWithRelations.lessons.length > 0) {
+      blockers.push({
+        type: 'lessons',
+        count: clientWithRelations.lessons.length,
+        message: `Cliente possui ${clientWithRelations.lessons.length} aula(s) associada(s)`,
+        details: clientWithRelations.lessons.map(lesson => ({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          lessonDate: lesson.startDate,
+          trainingTitle: lesson.class?.training?.title,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar usuário vinculado (não impede exclusão, mas informa)
+    if (clientWithRelations.user) {
+      blockers.push({
+        type: 'user',
+        count: 1,
+        message: 'Cliente possui usuário vinculado',
+        details: [{
+          userId: clientWithRelations.user.id,
+          userName: clientWithRelations.user.name,
+          userEmail: clientWithRelations.user.email,
+          isActive: clientWithRelations.user.isActive,
+        }],
+      });
+      // Usuário não impede exclusão
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir este cliente devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir este cliente, você deve primeiro:',
+          blockers.some(b => b.type === 'students') ? '• Remover ou transferir os estudantes com atividade' : null,
+          blockers.some(b => b.type === 'classes') ? '• Remover ou transferir as turmas associadas' : null,
+          blockers.some(b => b.type === 'lessons') ? '• Remover ou transferir as aulas associadas' : null,
+          blockers.some(b => b.type === 'students_inactive') ? '• Estudantes sem atividade serão removidos automaticamente' : null,
+          blockers.some(b => b.type === 'user') ? '• O usuário vinculado será removido automaticamente' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir o cliente
     await this.prisma.client.delete({ where: { id } });
     return { message: 'Cliente excluído com sucesso' };
   }
@@ -595,23 +822,39 @@ export class SuperadminService {
     }
 
     // Atualizar o usuário
-    const user = await this.prisma.user.update({
-      where: { id },
-      data: updateData,
-      include: {
-        role: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
+    try {
+      const user = await this.prisma.user.update({
+        where: { id },
+        data: updateData,
+        include: {
+          role: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+            },
           },
         },
-      },
-    });
+      });
 
-    // Remove password from response
-    const { password: _, ...sanitizedUser } = user;
-    return sanitizedUser;
+      // Remove password from response
+      const { password: _, ...sanitizedUser } = user;
+      return sanitizedUser;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        if (fields.includes('email')) {
+          throw new BadRequestException('Email já está em uso');
+        }
+        
+        throw new BadRequestException('Dados já existem para outro usuário');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar usuário
@@ -886,30 +1129,46 @@ export class SuperadminService {
     }
 
     // Atualizar o role
-    const role = await this.prisma.role.update({
-      where: { id },
-      data: updateData,
-      include: {
-        permissions: {
-          include: {
-            permission: true,
+    try {
+      const role = await this.prisma.role.update({
+        where: { id },
+        data: updateData,
+        include: {
+          permissions: {
+            include: {
+              permission: true,
+            },
+          },
+          users: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              isActive: true,
+            },
           },
         },
-        users: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            isActive: true,
-          },
-        },
-      },
-    });
+      });
 
-    return {
-      ...role,
-      permissions: role.permissions.map(rp => rp.permission),
-    };
+      return {
+        ...role,
+        permissions: role.permissions.map(rp => rp.permission),
+      };
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        if (fields.includes('name')) {
+          throw new BadRequestException('Nome do role já está em uso');
+        }
+        
+        throw new BadRequestException('Dados já existem para outro role');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar role
@@ -1301,25 +1560,38 @@ export class SuperadminService {
     if (!instructor) {
       throw new NotFoundException('Instrutor não encontrado');
     }
-    // Se tentar atualizar email/cpf/cnpj, garantir unicidade
+    
+    // Se tentar atualizar email, garantir unicidade
     if (patchDto.email && patchDto.email !== instructor.email) {
       const emailExists = await this.prisma.instructor.findUnique({ where: { email: patchDto.email } });
       if (emailExists) {
         throw new BadRequestException('Email já está em uso para outro instrutor');
       }
     }
+    
+    // Se tentar atualizar CPF, garantir unicidade
     if (patchDto.cpf && patchDto.cpf !== instructor.cpf) {
       const cpfExists = await this.prisma.instructor.findUnique({ where: { cpf: patchDto.cpf } });
       if (cpfExists) {
         throw new BadRequestException('CPF já está em uso para outro instrutor');
       }
     }
+    
+    // Se tentar atualizar CNPJ, garantir unicidade
     if (patchDto.cnpj && patchDto.cnpj !== instructor.cnpj) {
       const cnpjExists = await this.prisma.instructor.findUnique({ where: { cnpj: patchDto.cnpj } });
       if (cnpjExists) {
         throw new BadRequestException('CNPJ já está em uso para outro instrutor');
       }
     }
+    
+    // Remove strings vazias dos campos opcionais
+    Object.keys(patchDto).forEach(key => {
+      if ((patchDto as any)[key] === '') {
+        (patchDto as any)[key] = undefined;
+      }
+    });
+    
     // Atualizar apenas campos fornecidos
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
@@ -1327,11 +1599,40 @@ export class SuperadminService {
         updateData[key] = (patchDto as any)[key];
       }
     }
-    const updated = await this.prisma.instructor.update({
-      where: { id },
-      data: updateData,
-    });
-    return updated;
+    
+    // Se não há dados para atualizar, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    try {
+      const updated = await this.prisma.instructor.update({
+        where: { id },
+        data: updateData,
+      });
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        const fieldMessages = {
+          email: 'Email já está em uso para outro instrutor',
+          cpf: 'CPF já está em uso para outro instrutor',
+          cnpj: 'CNPJ já está em uso para outro instrutor',
+        };
+        
+        for (const field of fields) {
+          if (fieldMessages[field]) {
+            throw new BadRequestException(fieldMessages[field]);
+          }
+        }
+        
+        throw new BadRequestException('Dados já existem para outro instrutor');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar instrutor
@@ -1340,7 +1641,151 @@ export class SuperadminService {
     if (!instructor) {
       throw new NotFoundException('Instrutor não encontrado');
     }
-    // Se o instrutor já está vinculado a usuário, pode impedir exclusão se necessário
+
+    // Verificar se o instrutor possui relacionamentos que impedem a exclusão
+    const instructorWithRelations = await this.prisma.instructor.findUnique({
+      where: { id },
+      include: {
+        lessons: {
+          include: {
+            class: {
+              select: {
+                id: true,
+                training: {
+                  select: {
+                    id: true,
+                    title: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        classes: {
+          include: {
+            training: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+            students: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        Signature: {
+          select: {
+            id: true,
+            pngPath: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    if (!instructorWithRelations) {
+      throw new NotFoundException('Instrutor não encontrado');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar aulas ministradas
+    if (instructorWithRelations.lessons.length > 0) {
+      blockers.push({
+        type: 'lessons',
+        count: instructorWithRelations.lessons.length,
+        message: `Instrutor possui ${instructorWithRelations.lessons.length} aula(s) ministrada(s)`,
+        details: instructorWithRelations.lessons.map(lesson => ({
+          lessonId: lesson.id,
+          lessonTitle: lesson.title,
+          lessonDate: lesson.startDate,
+          classId: lesson.class?.id,
+          trainingTitle: lesson.class?.training?.title,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar turmas associadas
+    if (instructorWithRelations.classes.length > 0) {
+      blockers.push({
+        type: 'classes',
+        count: instructorWithRelations.classes.length,
+        message: `Instrutor possui ${instructorWithRelations.classes.length} turma(s) associada(s)`,
+        details: instructorWithRelations.classes.map(cls => ({
+          classId: cls.id,
+          trainingTitle: cls.training.title,
+          startDate: cls.startDate,
+          endDate: cls.endDate,
+          studentsCount: cls.students.length,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar assinatura (não impede exclusão, mas informa)
+    if (instructorWithRelations.Signature) {
+      blockers.push({
+        type: 'signature',
+        count: 1,
+        message: 'Instrutor possui assinatura cadastrada',
+        details: [{
+          signatureId: instructorWithRelations.Signature.id,
+          pngPath: instructorWithRelations.Signature.pngPath,
+        }],
+      });
+      // Assinatura não impede exclusão
+    }
+
+    // Verificar usuário vinculado (não impede exclusão, mas informa)
+    if (instructorWithRelations.user) {
+      blockers.push({
+        type: 'user',
+        count: 1,
+        message: 'Instrutor possui usuário vinculado',
+        details: [{
+          userId: instructorWithRelations.user.id,
+          userName: instructorWithRelations.user.name,
+          userEmail: instructorWithRelations.user.email,
+          isActive: instructorWithRelations.user.isActive,
+        }],
+      });
+      // Usuário não impede exclusão (será removido em cascata)
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir este instrutor devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir este instrutor, você deve primeiro:',
+          blockers.some(b => b.type === 'lessons') ? '• Remover ou transferir as aulas ministradas' : null,
+          blockers.some(b => b.type === 'classes') ? '• Remover ou transferir as turmas associadas' : null,
+          blockers.some(b => b.type === 'signature') ? '• A assinatura será removida automaticamente' : null,
+          blockers.some(b => b.type === 'user') ? '• O usuário vinculado será removido automaticamente' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir o instrutor
     await this.prisma.instructor.delete({ where: { id } });
     return { message: 'Instrutor excluído com sucesso' };
   }
@@ -1419,6 +1864,7 @@ export class SuperadminService {
     if (!training) {
       throw new NotFoundException('Treinamento não encontrado');
     }
+    
     // Se tentar atualizar título, garantir unicidade
     if (patchDto.title && patchDto.title !== training.title) {
       const titleExists = await this.prisma.training.findFirst({ where: { title: patchDto.title } });
@@ -1426,20 +1872,44 @@ export class SuperadminService {
         throw new BadRequestException('Já existe um treinamento com este título');
       }
     }
+    
     // Remove strings vazias dos campos opcionais
     Object.keys(patchDto).forEach(key => {
       if ((patchDto as any)[key] === '') {
         (patchDto as any)[key] = undefined;
       }
     });
+    
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
       if ((patchDto as any)[key] !== undefined) {
         updateData[key] = (patchDto as any)[key];
       }
     }
-    const updated = await this.prisma.training.update({ where: { id }, data: updateData });
-    return updated;
+    
+    // Se não há dados para atualizar, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    try {
+      const updated = await this.prisma.training.update({ where: { id }, data: updateData });
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        if (fields.includes('title')) {
+          throw new BadRequestException('Título já está em uso para outro treinamento');
+        }
+        
+        throw new BadRequestException('Dados já existem para outro treinamento');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar treinamento
@@ -1448,6 +1918,120 @@ export class SuperadminService {
     if (!training) {
       throw new NotFoundException('Treinamento não encontrado');
     }
+
+    // Verificar se o treinamento possui relacionamentos que impedem a exclusão
+    const trainingWithRelations = await this.prisma.training.findUnique({
+      where: { id },
+      include: {
+        classes: {
+          include: {
+            instructor: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            students: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        certificates: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        instructors: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!trainingWithRelations) {
+      throw new NotFoundException('Treinamento não encontrado');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar turmas associadas
+    if (trainingWithRelations.classes.length > 0) {
+      blockers.push({
+        type: 'classes',
+        count: trainingWithRelations.classes.length,
+        message: `Treinamento possui ${trainingWithRelations.classes.length} turma(s) associada(s)`,
+        details: trainingWithRelations.classes.map(cls => ({
+          classId: cls.id,
+          startDate: cls.startDate,
+          endDate: cls.endDate,
+          instructorName: cls.instructor.name,
+          studentsCount: cls.students.length,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar certificados emitidos
+    if (trainingWithRelations.certificates.length > 0) {
+      blockers.push({
+        type: 'certificates',
+        count: trainingWithRelations.certificates.length,
+        message: `Treinamento possui ${trainingWithRelations.certificates.length} certificado(s) emitido(s)`,
+        details: trainingWithRelations.certificates.map(cert => ({
+          certificateId: cert.id,
+          studentName: cert.student.name,
+          issueDate: cert.issueDate,
+          validationCode: cert.validationCode,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar instrutores vinculados (não impede exclusão, mas informa)
+    if (trainingWithRelations.instructors.length > 0) {
+      blockers.push({
+        type: 'instructors',
+        count: trainingWithRelations.instructors.length,
+        message: `Treinamento possui ${trainingWithRelations.instructors.length} instrutor(es) habilitado(s)`,
+        details: trainingWithRelations.instructors.map(instructor => ({
+          instructorId: instructor.id,
+          instructorName: instructor.name,
+        })),
+      });
+      // Instrutores não impedem exclusão (relação many-to-many será desfeita)
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir este treinamento devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir este treinamento, você deve primeiro:',
+          blockers.some(b => b.type === 'classes') ? '• Remover ou transferir as turmas associadas' : null,
+          blockers.some(b => b.type === 'certificates') ? '• Certificados não podem ser removidos por questões de auditoria' : null,
+          blockers.some(b => b.type === 'instructors') ? '• A vinculação com instrutores será removida automaticamente' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir o treinamento
     await this.prisma.training.delete({ where: { id } });
     return { message: 'Treinamento excluído com sucesso' };
   }
@@ -1604,16 +2188,43 @@ export class SuperadminService {
       }
     }
     
-    const updated = await this.prisma.student.update({ 
-      where: { id }, 
-      data: updateData,
-      include: {
-        client: true,
-        classes: true,
-        certificates: true,
+    // Se não há dados para atualizar, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    try {
+      const updated = await this.prisma.student.update({ 
+        where: { id }, 
+        data: updateData,
+        include: {
+          client: true,
+          classes: true,
+          certificates: true,
+        }
+      });
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        const fieldMessages = {
+          email: 'Email já está em uso para outro estudante',
+          cpf: 'CPF já está em uso para outro estudante',
+        };
+        
+        for (const field of fields) {
+          if (fieldMessages[field]) {
+            throw new BadRequestException(fieldMessages[field]);
+          }
+        }
+        
+        throw new BadRequestException('Dados já existem para outro estudante');
       }
-    });
-    return updated;
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar estudante
@@ -1622,6 +2233,150 @@ export class SuperadminService {
     if (!student) {
       throw new NotFoundException('Estudante não encontrado');
     }
+
+    // Verificar se o estudante possui relacionamentos que impedem a exclusão
+    const studentWithRelations = await this.prisma.student.findUnique({
+      where: { id },
+      include: {
+        lessonAttendances: {
+          include: {
+            lesson: {
+              select: {
+                id: true,
+                title: true,
+                startDate: true,
+              },
+            },
+          },
+        },
+        certificates: {
+          include: {
+            training: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+        classes: {
+          select: {
+            id: true,
+            training: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+        accountsReceivable: {
+          select: {
+            id: true,
+            description: true,
+            amount: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    if (!studentWithRelations) {
+      throw new NotFoundException('Estudante não encontrado');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar presenças em aulas
+    if (studentWithRelations.lessonAttendances.length > 0) {
+      blockers.push({
+        type: 'lessonAttendances',
+        count: studentWithRelations.lessonAttendances.length,
+        message: `Estudante possui ${studentWithRelations.lessonAttendances.length} registro(s) de presença em aulas`,
+        details: studentWithRelations.lessonAttendances.map(attendance => ({
+          lessonId: attendance.lesson.id,
+          lessonTitle: attendance.lesson.title,
+          lessonDate: attendance.lesson.startDate,
+          status: attendance.status,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar certificados
+    if (studentWithRelations.certificates.length > 0) {
+      blockers.push({
+        type: 'certificates',
+        count: studentWithRelations.certificates.length,
+        message: `Estudante possui ${studentWithRelations.certificates.length} certificado(s) emitido(s)`,
+        details: studentWithRelations.certificates.map(cert => ({
+          certificateId: cert.id,
+          trainingTitle: cert.training.title,
+          issueDate: cert.issueDate,
+          validationCode: cert.validationCode,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar turmas ativas
+    if (studentWithRelations.classes.length > 0) {
+      blockers.push({
+        type: 'classes',
+        count: studentWithRelations.classes.length,
+        message: `Estudante está matriculado em ${studentWithRelations.classes.length} turma(s)`,
+        details: studentWithRelations.classes.map(cls => ({
+          classId: cls.id,
+          trainingTitle: cls.training.title,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar contas a receber
+    if (studentWithRelations.accountsReceivable.length > 0) {
+      const pendingReceivables = studentWithRelations.accountsReceivable.filter(
+        acc => acc.status === 'PENDING'
+      );
+      
+      if (pendingReceivables.length > 0) {
+        blockers.push({
+          type: 'accountsReceivable',
+          count: pendingReceivables.length,
+          message: `Estudante possui ${pendingReceivables.length} conta(s) a receber pendente(s)`,
+          details: pendingReceivables.map(acc => ({
+            accountId: acc.id,
+            description: acc.description,
+            amount: acc.amount,
+            status: acc.status,
+          })),
+        });
+        canDelete = false;
+      }
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir este estudante devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir este estudante, você deve primeiro:',
+          blockers.some(b => b.type === 'lessonAttendances') ? '• Remover ou transferir os registros de presença' : null,
+          blockers.some(b => b.type === 'certificates') ? '• Certificados não podem ser removidos por questões de auditoria' : null,
+          blockers.some(b => b.type === 'classes') ? '• Remover o estudante das turmas em que está matriculado' : null,
+          blockers.some(b => b.type === 'accountsReceivable') ? '• Resolver as contas a receber pendentes' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir o estudante
     await this.prisma.student.delete({ where: { id } });
     return { message: 'Estudante excluído com sucesso' };
   }
@@ -1755,8 +2510,25 @@ export class SuperadminService {
       }
     }
     
-    const updated = await this.prisma.class.update({ where: { id }, data: updateData });
-    return updated;
+    // Se não há dados para atualizar, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    try {
+      const updated = await this.prisma.class.update({ where: { id }, data: updateData });
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        throw new BadRequestException('Dados já existem para outra turma');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar turma
@@ -1765,6 +2537,124 @@ export class SuperadminService {
     if (!turma) {
       throw new NotFoundException('Turma não encontrada');
     }
+
+    // Verificar se a turma possui relacionamentos que impedem a exclusão
+    const classWithRelations = await this.prisma.class.findUnique({
+      where: { id },
+      include: {
+        students: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        lessons: {
+          include: {
+            attendances: {
+              select: {
+                id: true,
+                student: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        training: {
+          select: {
+            id: true,
+            title: true,
+          },
+        },
+        instructor: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!classWithRelations) {
+      throw new NotFoundException('Turma não encontrada');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar estudantes matriculados
+    if (classWithRelations.students.length > 0) {
+      blockers.push({
+        type: 'students',
+        count: classWithRelations.students.length,
+        message: `Turma possui ${classWithRelations.students.length} estudante(s) matriculado(s)`,
+        details: classWithRelations.students.map(student => ({
+          studentId: student.id,
+          studentName: student.name,
+          studentEmail: student.email,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Verificar aulas ministradas
+    if (classWithRelations.lessons.length > 0) {
+      const lessonsWithAttendance = classWithRelations.lessons.filter(
+        lesson => lesson.attendances.length > 0
+      );
+
+      if (lessonsWithAttendance.length > 0) {
+        blockers.push({
+          type: 'lessons',
+          count: lessonsWithAttendance.length,
+          message: `Turma possui ${lessonsWithAttendance.length} aula(s) com presença registrada`,
+          details: lessonsWithAttendance.map(lesson => ({
+            lessonId: lesson.id,
+            lessonTitle: lesson.title,
+            lessonDate: lesson.startDate,
+            attendancesCount: lesson.attendances.length,
+          })),
+        });
+        canDelete = false;
+      } else {
+        // Aulas sem presença não impedem exclusão, mas informa
+        blockers.push({
+          type: 'lessons_no_attendance',
+          count: classWithRelations.lessons.length,
+          message: `Turma possui ${classWithRelations.lessons.length} aula(s) sem presença registrada`,
+          details: classWithRelations.lessons.map(lesson => ({
+            lessonId: lesson.id,
+            lessonTitle: lesson.title,
+            lessonDate: lesson.startDate,
+          })),
+        });
+      }
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir esta turma devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir esta turma, você deve primeiro:',
+          blockers.some(b => b.type === 'students') ? '• Remover os estudantes matriculados' : null,
+          blockers.some(b => b.type === 'lessons') ? '• Remover as aulas com presença registrada' : null,
+          blockers.some(b => b.type === 'lessons_no_attendance') ? '• As aulas sem presença serão removidas automaticamente' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir a turma
     await this.prisma.class.delete({ where: { id } });
     return { message: 'Turma excluída com sucesso' };
   }
@@ -1865,12 +2755,24 @@ export class SuperadminService {
       throw new BadRequestException('Nenhum campo fornecido para atualização');
     }
     
-    const updated = await this.prisma.lesson.update({ 
-      where: { id }, 
-      data: updateData 
-    });
-    
-    return updated;
+    try {
+      const updated = await this.prisma.lesson.update({ 
+        where: { id }, 
+        data: updateData 
+      });
+      
+      return updated;
+    } catch (error: any) {
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        throw new BadRequestException('Dados já existem para outra aula');
+      }
+      
+      // Re-lançar outros erros
+      throw error;
+    }
   }
 
   // Deletar aula
@@ -1879,6 +2781,82 @@ export class SuperadminService {
     if (!lesson) {
       throw new NotFoundException('Aula não encontrada');
     }
+
+    // Verificar se a aula possui relacionamentos que impedem a exclusão
+    const lessonWithRelations = await this.prisma.lesson.findUnique({
+      where: { id },
+      include: {
+        attendances: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        },
+        class: {
+          select: {
+            id: true,
+            training: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+        instructor: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!lessonWithRelations) {
+      throw new NotFoundException('Aula não encontrada');
+    }
+
+    const blockers: Array<{
+      type: string;
+      count: number;
+      message: string;
+      details: any[];
+    }> = [];
+    let canDelete = true;
+
+    // Verificar presenças registradas
+    if (lessonWithRelations.attendances.length > 0) {
+      blockers.push({
+        type: 'attendances',
+        count: lessonWithRelations.attendances.length,
+        message: `Aula possui ${lessonWithRelations.attendances.length} registro(s) de presença`,
+        details: lessonWithRelations.attendances.map(attendance => ({
+          attendanceId: attendance.id,
+          studentName: attendance.student.name,
+          status: attendance.status,
+          observations: attendance.observations,
+        })),
+      });
+      canDelete = false;
+    }
+
+    // Se não pode excluir, retornar erro detalhado
+    if (!canDelete) {
+      throw new BadRequestException({
+        message: 'Não é possível excluir esta aula devido aos relacionamentos existentes',
+        blockers,
+        suggestions: [
+          'Para excluir esta aula, você deve primeiro:',
+          blockers.some(b => b.type === 'attendances') ? '• Remover todos os registros de presença' : null,
+        ].filter(Boolean),
+      });
+    }
+
+    // Se chegou até aqui, pode excluir a aula
     await this.prisma.lesson.delete({ where: { id } });
     return { message: 'Aula excluída com sucesso' };
   }
@@ -2054,23 +3032,116 @@ export class SuperadminService {
 
   // Atualizar parcialmente presença (PATCH)
   async patchLessonAttendance(id: string, patchDto: PatchLessonAttendanceDto) {
+    console.log('patchLessonAttendance called with:', { id, patchDto });
+    
+    // Validar ID
+    if (!id || typeof id !== 'string') {
+      throw new BadRequestException('ID da presença é obrigatório e deve ser uma string válida');
+    }
+    
     const attendance = await this.prisma.lessonAttendance.findUnique({ where: { id } });
     if (!attendance) {
       throw new NotFoundException('Presença não encontrada');
     }
+    
+    // Verificar se patchDto é válido
+    if (!patchDto || typeof patchDto !== 'object') {
+      throw new BadRequestException('Dados de atualização inválidos');
+    }
+    
+    // Validar se pelo menos um campo foi fornecido
+    const allowedFields = ['lessonId', 'studentId', 'status', 'observations'];
+    const providedFields = Object.keys(patchDto).filter(key => allowedFields.includes(key));
+    
+    console.log('Provided fields:', providedFields);
+    
+    if (providedFields.length === 0) {
+      throw new BadRequestException('Pelo menos um campo válido deve ser fornecido para atualização');
+    }
+    
+    // Remove strings vazias e valores nulos dos campos opcionais
     Object.keys(patchDto).forEach(key => {
-      if ((patchDto as any)[key] === '') {
+      if ((patchDto as any)[key] === '' || (patchDto as any)[key] === null) {
         (patchDto as any)[key] = undefined;
       }
     });
+    
     const updateData: any = {};
     for (const key of Object.keys(patchDto)) {
-      if ((patchDto as any)[key] !== undefined) {
+      if ((patchDto as any)[key] !== undefined && allowedFields.includes(key)) {
         updateData[key] = (patchDto as any)[key];
       }
     }
-    const updated = await this.prisma.lessonAttendance.update({ where: { id }, data: updateData });
-    return updated;
+    
+    console.log('Update data:', updateData);
+    
+    // Se não há dados para atualizar após limpeza, retornar erro
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException('Nenhum campo válido fornecido para atualização');
+    }
+    
+    // Validar se lessonId e studentId existem (se fornecidos)
+    if (updateData.lessonId && updateData.lessonId !== attendance.lessonId) {
+      const lessonExists = await this.prisma.lesson.findUnique({ where: { id: updateData.lessonId } });
+      if (!lessonExists) {
+        throw new BadRequestException('Aula não encontrada');
+      }
+    }
+    
+    if (updateData.studentId && updateData.studentId !== attendance.studentId) {
+      const studentExists = await this.prisma.student.findUnique({ where: { id: updateData.studentId } });
+      if (!studentExists) {
+        throw new BadRequestException('Estudante não encontrado');
+      }
+    }
+    
+    try {
+      const updated = await this.prisma.lessonAttendance.update({ 
+        where: { id }, 
+        data: updateData,
+        include: {
+          lesson: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+            },
+          },
+          student: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      });
+      return updated;
+    } catch (error: any) {
+      console.error('Erro ao atualizar presença:', error);
+      
+      // Tratar erros específicos do Prisma
+      if (error.code === 'P2002') {
+        const fields = error.meta?.target || [];
+        
+        if (fields.includes('lessonId_studentId')) {
+          throw new BadRequestException('Já existe presença para este aluno nesta aula');
+        }
+        
+        throw new BadRequestException('Dados já existem para outra presença');
+      }
+      
+      if (error.code === 'P2003') {
+        const field = error.meta?.field_name || 'campo relacionado';
+        throw new BadRequestException(`Dados relacionados não encontrados para ${field}`);
+      }
+      
+      if (error.code === 'P2025') {
+        throw new NotFoundException('Presença não encontrada para atualização');
+      }
+      
+      // Re-lançar outros erros
+      throw new BadRequestException('Erro interno ao atualizar presença');
+    }
   }
 
   // Deletar presença
@@ -2171,6 +3242,14 @@ export class SuperadminService {
     });
 
     if (existingSignature) {
+      // Deletar arquivo antigo se existir e for diferente do novo
+      if (existingSignature.pngPath !== imagePath) {
+        const oldFilePath = path.join(process.cwd(), existingSignature.pngPath.replace(/^\//, ''));
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      }
+
       // Atualizar assinatura existente
       const updatedSignature = await this.prisma.signature.update({
         where: { instructorId },
@@ -3017,6 +4096,20 @@ export class SuperadminService {
               startDate: true,
               endDate: true,
               status: true,
+              attendances: {
+                select: {
+                  id: true,
+                  status: true,
+                  observations: true,
+                  student: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                    }
+                  }
+                }
+              }
             }
           },
         },
@@ -3025,8 +4118,44 @@ export class SuperadminService {
       this.prisma.class.count({ where }),
     ]);
 
+    // Processar as classes para adicionar informações de presença
+    const processedClasses = classes.map(classItem => {
+      const studentsWithAttendance = classItem.students.map(student => {
+        const attendances = classItem.lessons.flatMap(lesson => 
+          lesson.attendances.filter(attendance => attendance.student.id === student.id)
+        );
+        
+        const absences = attendances.filter(attendance => attendance.status === 'AUSENTE');
+        
+        return {
+          ...student,
+          attendances: attendances.map(attendance => ({
+            id: attendance.id,
+            status: attendance.status,
+            observations: attendance.observations,
+            lessonId: classItem.lessons.find(lesson => 
+              lesson.attendances.some(att => att.id === attendance.id)
+            )?.id,
+          })),
+          totalAbsences: absences.length,
+          hasAbsences: absences.length > 0,
+        };
+      });
+
+      return {
+        ...classItem,
+        students: studentsWithAttendance,
+        attendanceSummary: {
+          totalLessons: classItem.lessons.length,
+          totalStudents: classItem.students.length,
+          studentsWithoutAbsences: studentsWithAttendance.filter(s => !s.hasAbsences).length,
+          studentsWithAbsences: studentsWithAttendance.filter(s => s.hasAbsences).length,
+        }
+      };
+    });
+
     return {
-      classes,
+      classes: processedClasses,
       pagination: {
         page,
         limit,
@@ -3132,6 +4261,20 @@ export class SuperadminService {
               startDate: true,
               endDate: true,
               status: true,
+              attendances: {
+                select: {
+                  id: true,
+                  status: true,
+                  observations: true,
+                  student: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                    }
+                  }
+                }
+              }
             }
           },
         },
@@ -3140,8 +4283,44 @@ export class SuperadminService {
       this.prisma.class.count({ where }),
     ]);
 
+    // Processar as classes para adicionar informações de presença
+    const processedClasses = classes.map(classItem => {
+      const studentsWithAttendance = classItem.students.map(student => {
+        const attendances = classItem.lessons.flatMap(lesson => 
+          lesson.attendances.filter(attendance => attendance.student.id === student.id)
+        );
+        
+        const absences = attendances.filter(attendance => attendance.status === 'AUSENTE');
+        
+        return {
+          ...student,
+          attendances: attendances.map(attendance => ({
+            id: attendance.id,
+            status: attendance.status,
+            observations: attendance.observations,
+            lessonId: classItem.lessons.find(lesson => 
+              lesson.attendances.some(att => att.id === attendance.id)
+            )?.id,
+          })),
+          totalAbsences: absences.length,
+          hasAbsences: absences.length > 0,
+        };
+      });
+
+      return {
+        ...classItem,
+        students: studentsWithAttendance,
+        attendanceSummary: {
+          totalLessons: classItem.lessons.length,
+          totalStudents: classItem.students.length,
+          studentsWithoutAbsences: studentsWithAttendance.filter(s => !s.hasAbsences).length,
+          studentsWithAbsences: studentsWithAttendance.filter(s => s.hasAbsences).length,
+        }
+      };
+    });
+
     return {
-      classes,
+      classes: processedClasses,
       pagination: {
         page,
         limit,
@@ -3248,6 +4427,20 @@ export class SuperadminService {
               startDate: true,
               endDate: true,
               status: true,
+              attendances: {
+                select: {
+                  id: true,
+                  status: true,
+                  observations: true,
+                  student: {
+                    select: {
+                      id: true,
+                      name: true,
+                      email: true,
+                    }
+                  }
+                }
+              }
             }
           },
         },
@@ -3256,8 +4449,44 @@ export class SuperadminService {
       this.prisma.class.count({ where }),
     ]);
 
+    // Processar as classes para adicionar informações de presença
+    const processedClasses = classes.map(classItem => {
+      const studentsWithAttendance = classItem.students.map(student => {
+        const attendances = classItem.lessons.flatMap(lesson => 
+          lesson.attendances.filter(attendance => attendance.student.id === student.id)
+        );
+        
+        const absences = attendances.filter(attendance => attendance.status === 'AUSENTE');
+        
+        return {
+          ...student,
+          attendances: attendances.map(attendance => ({
+            id: attendance.id,
+            status: attendance.status,
+            observations: attendance.observations,
+            lessonId: classItem.lessons.find(lesson => 
+              lesson.attendances.some(att => att.id === attendance.id)
+            )?.id,
+          })),
+          totalAbsences: absences.length,
+          hasAbsences: absences.length > 0,
+        };
+      });
+
+      return {
+        ...classItem,
+        students: studentsWithAttendance,
+        attendanceSummary: {
+          totalLessons: classItem.lessons.length,
+          totalStudents: classItem.students.length,
+          studentsWithoutAbsences: studentsWithAttendance.filter(s => !s.hasAbsences).length,
+          studentsWithAbsences: studentsWithAttendance.filter(s => s.hasAbsences).length,
+        }
+      };
+    });
+
     return {
-      classes,
+      classes: processedClasses,
       pagination: {
         page,
         limit,

@@ -54,7 +54,7 @@ export class UploadService {
       const response: UploadImageResponseDto = {
         filename,
         originalname: file.originalname,
-        path: filePath,
+        path: `/upload/image${category ? `/${category}` : ''}/${filename}`,
         mimetype: file.mimetype,
         size: file.size,
         url: `/uploads/images${category ? `/${category}` : ''}/${filename}`
