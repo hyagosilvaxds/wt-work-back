@@ -3,6 +3,7 @@ import { AuthModule } from './auth/auth.module';
 import { PrismaService } from './prisma/prisma.service';
 import { ConfigModule } from '@nestjs/config';
 import { SuperadminModule } from './superadmin/superadmin.module';
+import { UploadModule } from './upload/upload.module';
 
 
 @Module({
@@ -11,6 +12,7 @@ import { SuperadminModule } from './superadmin/superadmin.module';
 }),
 AuthModule,
 SuperadminModule,
+UploadModule,
 ],
   providers: [PrismaService],
   exports: [PrismaService], // Exporta PrismaService para ser usado em outros módulos

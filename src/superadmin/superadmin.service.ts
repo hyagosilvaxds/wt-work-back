@@ -2154,6 +2154,67 @@ export class SuperadminService {
     }
   }
 
+  // Criar ou atualizar assinatura de instrutor com path da imagem
+  async createInstructorSignature(instructorId: string, imagePath: string) {
+    // Verificar se o instrutor existe
+    const instructor = await this.prisma.instructor.findUnique({ 
+      where: { id: instructorId } 
+    });
+    
+    if (!instructor) {
+      throw new NotFoundException('Instrutor não encontrado');
+    }
+
+    // Verificar se já existe uma assinatura para este instrutor
+    const existingSignature = await this.prisma.signature.findUnique({
+      where: { instructorId }
+    });
+
+    if (existingSignature) {
+      // Atualizar assinatura existente
+      const updatedSignature = await this.prisma.signature.update({
+        where: { instructorId },
+        data: { pngPath: imagePath },
+        include: {
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return {
+        message: 'Assinatura atualizada com sucesso',
+        signature: updatedSignature
+      };
+    } else {
+      // Criar nova assinatura
+      const newSignature = await this.prisma.signature.create({
+        data: {
+          instructorId,
+          pngPath: imagePath
+        },
+        include: {
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          }
+        }
+      });
+
+      return {
+        message: 'Assinatura criada com sucesso',
+        signature: newSignature
+      };
+    }
+  }
+
   // Buscar assinatura por ID do instrutor
   async getSignatureByInstructorId(instructorId: string) {
     const signature = await this.prisma.signature.findUnique({
@@ -2323,15 +2384,81 @@ export class SuperadminService {
         { observations: { contains: search, mode: 'insensitive' } },
         { training: { 
           OR: [
+                                                
+                                                 { title: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } },
+              ]
+            }},
+            { instructor: { 
+              OR: [
+                { name: { contains: search, mode: 'insensitive' } },
+                { email: { contains: search, mode: 'insensitive' } },
+                { corporateName: { contains: search, mode: 'insensitive' } },
+              ]
+            }},
+      ];
+    }
+
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: true,
+          instructor: true,
+          students: true,
+          lessons: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Buscar próprias turmas (instrutor logado)
+  async getInstructorClasses(userId: string, page: number = 1, limit: number = 10, search?: string) {
+    // Buscar o instrutor vinculado ao usuário logado
+    const instructor = await this.prisma.instructor.findFirst({
+      where: { userId },
+    });
+
+    if (!instructor) {
+      throw new NotFoundException('Usuário não possui perfil de instrutor vinculado');
+    }
+
+    const skip = (page - 1) * limit;
+    const where: any = {
+      instructorId: instructor.id,
+    };
+
+    if (search) {
+      where.OR = [
+        { type: { contains: search, mode: 'insensitive' } },
+        { status: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { observations: { contains: search, mode: 'insensitive' } },
+        { training: { 
+          OR: [
             { title: { contains: search, mode: 'insensitive' } },
             { description: { contains: search, mode: 'insensitive' } },
           ]
         }},
-        { instructor: { 
+        { client: { 
           OR: [
             { name: { contains: search, mode: 'insensitive' } },
             { email: { contains: search, mode: 'insensitive' } },
-            { corporateName: { contains: search, mode: 'insensitive' } },
+            { cpf: { contains: search, mode: 'insensitive' } },
+            { cnpj: { contains: search, mode: 'insensitive' } },
           ]
         }},
       ];
@@ -2344,7 +2471,7 @@ export class SuperadminService {
         take: limit,
         include: {
           training: true,
-          instructor: true,
+          client: true,
           students: true,
           lessons: true,
         },
@@ -2779,5 +2906,364 @@ export class SuperadminService {
     }
 
     return client.id;
+  }
+
+  // Buscar instructorId baseado no userId
+  async getInstructorIdByUserId(userId: string) {
+    // Busca o instrutor que tem o userId vinculado
+    const instructor = await this.prisma.instructor.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!instructor) {
+      return null; // Retorna null se não encontrar instrutor vinculado
+    }
+
+    return instructor.id;
+  }
+
+  // Buscar todas as classes finalizadas
+  async getFinishedClasses(page: number = 1, limit: number = 10, search?: string) {
+    const skip = (page - 1) * limit;
+    
+    const where: any = {
+      status: 'CONCLUIDO'
+    };
+
+    if (search) {
+      where.OR = [
+        { type: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { observations: { contains: search, mode: 'insensitive' } },
+        { training: { 
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+        { instructor: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { corporateName: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+        { client: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { cpf: { contains: search, mode: 'insensitive' } },
+            { cnpj: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+      ];
+    }
+
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              durationHours: true,
+              validityDays: true,
+            }
+          },
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              corporateName: true,
+            }
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              cnpj: true,
+            }
+          },
+          students: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              birthDate: true,
+              mobileAreaCode: true,
+              mobileNumber: true,
+              landlineAreaCode: true,
+              landlineNumber: true,
+              address: true,
+              city: true,
+              state: true,
+              zipCode: true,
+              createdAt: true,
+            }
+          },
+          lessons: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+              endDate: true,
+              status: true,
+            }
+          },
+        },
+        orderBy: { endDate: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Buscar classes finalizadas por ID do cliente
+  async getFinishedClassesByClientId(clientId: string, page: number = 1, limit: number = 10, search?: string) {
+    // Verificar se o cliente existe
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Cliente não encontrado');
+    }
+
+    const skip = (page - 1) * limit;
+    
+    const where: any = {
+      clientId,
+      status: 'CONCLUIDO'
+    };
+
+    if (search) {
+      where.OR = [
+        { type: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { observations: { contains: search, mode: 'insensitive' } },
+        { training: { 
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+        { instructor: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { corporateName: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+      ];
+    }
+
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              durationHours: true,
+              validityDays: true,
+            }
+          },
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              corporateName: true,
+            }
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              cnpj: true,
+            }
+          },
+          students: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              birthDate: true,
+              mobileAreaCode: true,
+              mobileNumber: true,
+              landlineAreaCode: true,
+              landlineNumber: true,
+              address: true,
+              city: true,
+              state: true,
+              zipCode: true,
+              createdAt: true,
+            }
+          },
+          lessons: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+              endDate: true,
+              status: true,
+            }
+          },
+        },
+        orderBy: { endDate: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  // Buscar classes finalizadas por ID do instrutor
+  async getFinishedClassesByInstructorId(instructorId: string, page: number = 1, limit: number = 10, search?: string) {
+    // Verificar se o instrutor existe
+    const instructor = await this.prisma.instructor.findUnique({
+      where: { id: instructorId },
+    });
+
+    if (!instructor) {
+      throw new NotFoundException('Instrutor não encontrado');
+    }
+
+    const skip = (page - 1) * limit;
+    
+    const where: any = {
+      instructorId,
+      status: 'CONCLUIDO'
+    };
+
+    if (search) {
+      where.OR = [
+        { type: { contains: search, mode: 'insensitive' } },
+        { location: { contains: search, mode: 'insensitive' } },
+        { observations: { contains: search, mode: 'insensitive' } },
+        { training: { 
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+        { client: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } },
+            { cpf: { contains: search, mode: 'insensitive' } },
+            { cnpj: { contains: search, mode: 'insensitive' } },
+          ]
+        }},
+      ];
+    }
+
+    const [classes, total] = await Promise.all([
+      this.prisma.class.findMany({
+        where,
+        skip,
+        take: limit,
+        include: {
+          training: {
+            select: {
+              id: true,
+              title: true,
+              description: true,
+              durationHours: true,
+              validityDays: true,
+            }
+          },
+          instructor: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              corporateName: true,
+            }
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              cnpj: true,
+            }
+          },
+          students: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              cpf: true,
+              birthDate: true,
+              mobileAreaCode: true,
+              mobileNumber: true,
+              landlineAreaCode: true,
+              landlineNumber: true,
+              address: true,
+              city: true,
+              state: true,
+              zipCode: true,
+              createdAt: true,
+            }
+          },
+          lessons: {
+            select: {
+              id: true,
+              title: true,
+              startDate: true,
+              endDate: true,
+              status: true,
+            }
+          },
+        },
+        orderBy: { endDate: 'desc' },
+      }),
+      this.prisma.class.count({ where }),
+    ]);
+
+    return {
+      classes,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 }

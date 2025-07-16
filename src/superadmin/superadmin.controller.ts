@@ -40,6 +40,7 @@ import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesso
 import { CreateUserDto, UpdateUserDto, PatchUserDto, CreateRoleDto, UpdateRoleDto } from './dto/user.dto';
 import { CreateInstructorUserDto, LinkUserToInstructorDto } from './dto/instructor.dto';
 import { CreateTrainingDto } from './dto/create-training.dto';
+import { CreateSignatureDto } from './dto/create-signature.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { PermissionsGuard } from '../auth/permissions.guard';
 import { RequirePermissions } from '../auth/permissions.decorator';
@@ -148,6 +149,18 @@ export class SuperadminController {
       userId,
       clientId,
       hasClient: clientId !== null,
+    };
+  }
+
+  // Buscar instructorId baseado no userId
+  @Get('users/:userId/instructor-id')
+  @RequirePermissions('VIEW_USERS')
+  async getInstructorIdByUserId(@Param('userId') userId: string) {
+    const instructorId = await this.superadminService.getInstructorIdByUserId(userId);
+    return {
+      userId,
+      instructorId,
+      hasInstructor: instructorId !== null,
     };
   }
 
@@ -454,13 +467,6 @@ export class SuperadminController {
     return this.superadminService.createClass(createClassDto);
   }
 
-  // Buscar turma por ID
-  @Get('classes/:id')
-  @RequirePermissions('VIEW_USERS')
-  async getClassById(@Param('id') id: string) {
-    return this.superadminService.getClassById(id);
-  }
-
   // Listar todas as turmas
   @Get('classes')
   @RequirePermissions('VIEW_USERS')
@@ -472,6 +478,54 @@ export class SuperadminController {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
     return this.superadminService.getClasses(pageNum, limitNum, search);
+  }
+
+  // Buscar todas as classes finalizadas
+  @Get('classes/finished')
+  @RequirePermissions('VIEW_USERS')
+  async getFinishedClasses(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getFinishedClasses(pageNum, limitNum, search);
+  }
+
+  // Buscar classes finalizadas por ID do cliente
+  @Get('classes/finished/client/:clientId')
+  @RequirePermissions('VIEW_USERS')
+  async getFinishedClassesByClientId(
+    @Param('clientId') clientId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getFinishedClassesByClientId(clientId, pageNum, limitNum, search);
+  }
+
+  // Buscar classes finalizadas por ID do instrutor
+  @Get('classes/finished/instructor/:instructorId')
+  @RequirePermissions('VIEW_USERS')
+  async getFinishedClassesByInstructorId(
+    @Param('instructorId') instructorId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    return this.superadminService.getFinishedClassesByInstructorId(instructorId, pageNum, limitNum, search);
+  }
+
+  // Buscar turma por ID
+  @Get('classes/:id')
+  @RequirePermissions('VIEW_USERS')
+  async getClassById(@Param('id') id: string) {
+    return this.superadminService.getClassById(id);
   }
 
   // Atualizar parcialmente turma (PATCH)
@@ -672,6 +726,18 @@ export class SuperadminController {
     );
   }
 
+  // Criar assinatura do instrutor com path da imagem
+  @Post('signatures')
+  @RequirePermissions('CREATE_USERS')
+  @HttpCode(HttpStatus.CREATED)
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createInstructorSignature(@Body() createSignatureDto: CreateSignatureDto) {
+    return this.superadminService.createInstructorSignature(
+      createSignatureDto.instructorId,
+      createSignatureDto.imagePath
+    );
+  }
+
   // Buscar assinatura por ID do instrutor
   @Get('signatures/instructor/:instructorId')
   @RequirePermissions('VIEW_USERS')
@@ -740,5 +806,19 @@ export class SuperadminController {
     const limitNum = limit ? parseInt(limit, 10) : 10;
     const userId = req.user.id; // Extraído do JWT pelo AuthGuard
     return this.superadminService.getOwnClasses(userId, pageNum, limitNum, search);
+  }
+
+  @Get('instructor-classes')
+  @RequirePermissions('VIEW_CLASSES')
+  async getInstructorClasses(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+  ) {
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 10;
+    const userId = req.user.id; // Extraído do JWT pelo AuthGuard
+    return this.superadminService.getInstructorClasses(userId, pageNum, limitNum, search);
   }
 }
