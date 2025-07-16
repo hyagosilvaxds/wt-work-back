@@ -3,6 +3,8 @@ import { LinkUserToClientDto } from './dto/client-link-user.dto';
 import { UploadSignatureDto } from './dto/upload-signature.dto';
 import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
 import { ClientDashboardDto } from './dto/client-dashboard.dto';
+import { InstructorDashboardDto } from './dto/instructor-dashboard.dto';
+import { AdminDashboardDto } from './dto/admin-dashboard.dto';
   
 import { 
   Controller, 
@@ -107,6 +109,12 @@ export class SuperadminController {
   async getClientDashboard(@Param('id') clientId: string): Promise<ClientDashboardDto> {
     return this.superadminService.getClientDashboard(clientId);
   }
+
+  @Get('dashboard')
+  @RequirePermissions('VIEW_USERS')
+  async getAdminDashboard(): Promise<AdminDashboardDto> {
+    return this.superadminService.getAdminDashboard();
+  }
   
   constructor(private readonly superadminService: SuperadminService) {}
 
@@ -129,6 +137,18 @@ export class SuperadminController {
   @RequirePermissions('VIEW_USERS')
   async findUserById(@Param('id') id: string) {
     return this.superadminService.findUserById(id);
+  }
+
+  // Buscar clientId baseado no userId
+  @Get('users/:userId/client-id')
+  @RequirePermissions('VIEW_USERS')
+  async getClientIdByUserId(@Param('userId') userId: string) {
+    const clientId = await this.superadminService.getClientIdByUserId(userId);
+    return {
+      userId,
+      clientId,
+      hasClient: clientId !== null,
+    };
   }
 
   // Criar novo usuário
@@ -313,6 +333,12 @@ export class SuperadminController {
   @HttpCode(HttpStatus.OK)
   async deleteInstructor(@Param('id') id: string) {
     return this.superadminService.deleteInstructor(id);
+  }
+
+  @Get('instructors/:id/dashboard')
+  @RequirePermissions('VIEW_USERS')
+  async getInstructorDashboard(@Param('id') instructorId: string): Promise<InstructorDashboardDto> {
+    return this.superadminService.getInstructorDashboard(instructorId);
   }
 
   // --- STUDENT CRUD ---

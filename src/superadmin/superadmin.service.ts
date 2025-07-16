@@ -14,6 +14,8 @@ import { CreateLessonDto, PatchLessonDto } from './dto/lesson.dto';
 import { CreateLessonAttendanceDto, PatchLessonAttendanceDto } from './dto/lesson-attendance.dto';
 import { CreateStudentDto, PatchStudentDto } from './dto/student.dto';
 import { ClientDashboardDto, ScheduledLessonDto } from './dto/client-dashboard.dto';
+import { InstructorDashboardDto, ScheduledLessonDto as InstructorScheduledLessonDto } from './dto/instructor-dashboard.dto';
+import { AdminDashboardDto, ScheduledLessonDto as AdminScheduledLessonDto, RecentActivityDto } from './dto/admin-dashboard.dto';
 
 @Injectable()
 export class SuperadminService {
@@ -2455,5 +2457,327 @@ export class SuperadminService {
       totalCompletedClasses,
       scheduledLessons: scheduledLessonsDto
     };
+  }
+
+  // Dashboard do instrutor
+  async getInstructorDashboard(instructorId: string): Promise<InstructorDashboardDto> {
+    // Validar se o instrutor existe
+    const instructor = await this.prisma.instructor.findUnique({
+      where: { id: instructorId },
+    });
+    
+    if (!instructor) {
+      throw new NotFoundException('Instrutor não encontrado');
+    }
+
+    // Buscar dados do dashboard em paralelo
+    const [
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      scheduledLessons
+    ] = await Promise.all([
+      // Quantidade total de estudantes nas turmas do instrutor
+      this.prisma.student.count({
+        where: { 
+          classes: {
+            some: {
+              instructorId
+            }
+          }
+        }
+      }),
+      
+      // Quantidade total de turmas do instrutor
+      this.prisma.class.count({
+        where: { instructorId }
+      }),
+      
+      // Quantidade de aulas agendadas do instrutor
+      this.prisma.lesson.count({
+        where: { 
+          instructorId,
+          status: 'AGENDADA'
+        }
+      }),
+      
+      // Quantidade de turmas com status = CONCLUIDO
+      this.prisma.class.count({
+        where: { 
+          instructorId,
+          status: 'CONCLUIDO'
+        }
+      }),
+      
+      // Aulas agendadas para exibir na agenda
+      this.prisma.lesson.findMany({
+        where: { 
+          instructorId,
+          status: 'AGENDADA'
+        },
+        include: {
+          client: {
+            select: {
+              name: true
+            }
+          },
+          class: {
+            select: {
+              training: {
+                select: {
+                  title: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { startDate: 'asc' },
+        take: 50 // Limitando a 50 aulas para não sobrecarregar
+      })
+    ]);
+
+    // Transformar as aulas agendadas para o formato do DTO
+    const scheduledLessonsDto: InstructorScheduledLessonDto[] = scheduledLessons.map(lesson => ({
+      id: lesson.id,
+      title: lesson.title,
+      description: lesson.description,
+      startDate: lesson.startDate,
+      endDate: lesson.endDate,
+      location: lesson.location,
+      status: lesson.status,
+      className: lesson.class?.training?.title,
+      clientName: lesson.client?.name,
+      observations: lesson.observations
+    }));
+
+    return {
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      scheduledLessons: scheduledLessonsDto
+    };
+  }
+
+  // Dashboard do admin
+  async getAdminDashboard(): Promise<AdminDashboardDto> {
+    // Buscar dados do dashboard em paralelo
+    const [
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      totalInstructors,
+      totalClients,
+      totalTrainings,
+      scheduledLessons,
+      recentClasses,
+      recentLessons,
+      recentStudents
+    ] = await Promise.all([
+      // Quantidade total de estudantes
+      this.prisma.student.count(),
+      
+      // Quantidade total de turmas
+      this.prisma.class.count(),
+      
+      // Quantidade de aulas agendadas
+      this.prisma.lesson.count({
+        where: { 
+          status: 'AGENDADA'
+        }
+      }),
+      
+      // Quantidade de turmas com status = CONCLUIDO
+      this.prisma.class.count({
+        where: { 
+          status: 'CONCLUIDO'
+        }
+      }),
+      
+      // Quantidade total de instrutores
+      this.prisma.instructor.count(),
+      
+      // Quantidade total de clientes
+      this.prisma.client.count(),
+      
+      // Quantidade total de treinamentos
+      this.prisma.training.count(),
+      
+      // Aulas agendadas para exibir na agenda
+      this.prisma.lesson.findMany({
+        where: { 
+          status: 'AGENDADA'
+        },
+        include: {
+          instructor: {
+            select: {
+              name: true
+            }
+          },
+          client: {
+            select: {
+              name: true
+            }
+          },
+          class: {
+            select: {
+              training: {
+                select: {
+                  title: true
+                }
+              }
+            }
+          }
+        },
+        orderBy: { startDate: 'asc' },
+        take: 50 // Limitando a 50 aulas para não sobrecarregar
+      }),
+      
+      // Turmas criadas recentemente (últimos 30 dias)
+      this.prisma.class.findMany({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // 30 dias atrás
+          }
+        },
+        include: {
+          training: {
+            select: {
+              title: true
+            }
+          },
+          client: {
+            select: {
+              name: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      }),
+      
+      // Aulas criadas recentemente (últimos 7 dias)
+      this.prisma.lesson.findMany({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
+          }
+        },
+        include: {
+          instructor: {
+            select: {
+              name: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      }),
+      
+      // Estudantes matriculados recentemente (últimos 7 dias)
+      this.prisma.student.findMany({
+        where: {
+          createdAt: {
+            gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) // 7 dias atrás
+          }
+        },
+        include: {
+          client: {
+            select: {
+              name: true
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      })
+    ]);
+
+    // Transformar as aulas agendadas para o formato do DTO
+    const scheduledLessonsDto: AdminScheduledLessonDto[] = scheduledLessons.map(lesson => ({
+      id: lesson.id,
+      title: lesson.title,
+      description: lesson.description,
+      startDate: lesson.startDate,
+      endDate: lesson.endDate,
+      location: lesson.location,
+      status: lesson.status,
+      instructorName: lesson.instructor.name,
+      clientName: lesson.client?.name,
+      className: lesson.class?.training?.title,
+      observations: lesson.observations
+    }));
+
+    // Criar atividades recentes
+    const recentActivities: RecentActivityDto[] = [];
+    
+    // Adicionar turmas criadas
+    recentClasses.forEach(cls => {
+      recentActivities.push({
+        id: cls.id,
+        type: 'CLASS_CREATED',
+        description: `Nova turma criada: ${cls.training?.title} ${cls.client?.name ? `para ${cls.client.name}` : ''}`,
+        createdAt: cls.createdAt,
+        entityId: cls.id,
+        entityType: 'CLASS'
+      });
+    });
+    
+    // Adicionar aulas criadas
+    recentLessons.forEach(lesson => {
+      recentActivities.push({
+        id: lesson.id,
+        type: 'LESSON_CREATED',
+        description: `Nova aula agendada: ${lesson.title} com ${lesson.instructor.name}`,
+        createdAt: lesson.createdAt,
+        entityId: lesson.id,
+        entityType: 'LESSON'
+      });
+    });
+    
+    // Adicionar estudantes matriculados
+    recentStudents.forEach(student => {
+      recentActivities.push({
+        id: student.id,
+        type: 'STUDENT_ENROLLED',
+        description: `Novo estudante matriculado: ${student.name} ${student.client?.name ? `(${student.client.name})` : ''}`,
+        createdAt: student.createdAt,
+        entityId: student.id,
+        entityType: 'STUDENT'
+      });
+    });
+
+    // Ordenar atividades por data (mais recentes primeiro) e limitar a 20
+    recentActivities.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const limitedActivities = recentActivities.slice(0, 20);
+
+    return {
+      totalStudents,
+      totalClasses,
+      totalScheduledLessons,
+      totalCompletedClasses,
+      totalInstructors,
+      totalClients,
+      totalTrainings,
+      scheduledLessons: scheduledLessonsDto,
+      recentActivities: limitedActivities
+    };
+  }
+
+  // Buscar clientId baseado no userId
+  async getClientIdByUserId(userId: string) {
+    // Busca o cliente que tem o userId vinculado
+    const client = await this.prisma.client.findUnique({
+      where: { userId },
+      select: { id: true },
+    });
+
+    if (!client) {
+      return null; // Retorna null se não encontrar cliente vinculado
+    }
+
+    return client.id;
   }
 }
